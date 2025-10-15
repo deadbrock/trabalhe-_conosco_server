@@ -4,12 +4,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const pool = new Pool({
-  host: process.env.PGHOST || "localhost",
-  port: parseInt(process.env.PGPORT || "5432", 10),
-  user: process.env.PGUSER || "postgres",
-  password: process.env.PGPASSWORD || "postgres",
-  database: process.env.PGDATABASE || "trabalhe_conosco",
-  ssl: process.env.PGSSL === "true" || process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
 export async function testConnection(): Promise<void> {
