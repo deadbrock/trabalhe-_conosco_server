@@ -28,8 +28,6 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
-    "@types/cloudinary": "^1.0.0",
-    "@types/multer-storage-cloudinary": "^2.2.11",
     "pg": "^8.16.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
