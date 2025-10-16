@@ -27,8 +27,9 @@ const storage = new CloudinaryStorage({
     
     return {
       folder: "curriculos",
-      public_id: `${sanitizedName}_${Date.now()}.pdf`, // ADICIONADO .pdf aqui
+      public_id: `${sanitizedName}_${Date.now()}.pdf`,
       resource_type: "raw" as const,
+      access_mode: "public" as const, // Permite acesso público ao arquivo
       use_filename: false,
       unique_filename: false,
     };
