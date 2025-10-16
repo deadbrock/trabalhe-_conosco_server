@@ -85,23 +85,23 @@ candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
       });
     }
     
-    // Pega apenas o public_id do Cloudinary, não a URL completa
+    // Pega a URL completa do Cloudinary
     const cloudinaryFile = req.file as any;
-    const publicId = cloudinaryFile?.filename || cloudinaryFile?.public_id || null;
+    const curriculoUrl = cloudinaryFile?.path || null;
     
     console.log("📤 Upload recebido:", {
       filename: req.file?.originalname,
-      public_id: publicId,
+      cloudinary_url: curriculoUrl,
       size: req.file?.size
     });
     
     const { rows } = await pool.query(
       `INSERT INTO candidatos (nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, publicId, vaga_id]
+      [nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculoUrl, vaga_id]
     );
     
-    console.log("✅ Candidato salvo com sucesso:", rows[0].id, "| Public ID:", publicId);
+    console.log("✅ Candidato salvo com sucesso:", rows[0].id, "| URL:", curriculoUrl);
     res.status(201).json(rows[0]);
   } catch (error) {
     console.error("❌ Erro ao processar candidatura:", error);
