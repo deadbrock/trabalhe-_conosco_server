@@ -7,6 +7,7 @@ import { vagasRouter } from "./routes/vagas";
 import { candidatosRouter } from "./routes/candidatos";
 import { authRouter } from "./routes/auth";
 import { metricsRouter } from "./routes/metrics";
+import { setupRouter } from "./routes/setup";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -28,6 +29,7 @@ app.get("/health", (_req, res) => {
 
 // públicas
 app.use("/auth", authRouter);
+app.use("/setup", setupRouter);
 
 // Rotas de vagas: combina rotas públicas e protegidas
 const vagasCombinedRouter = Router();
