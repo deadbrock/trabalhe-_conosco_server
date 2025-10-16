@@ -1,11 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
+import * as cloudinary from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { pool } from "../db";
 
 // Configurar Cloudinary
-cloudinary.config({
+const cld = cloudinary.v2;
+cld.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
@@ -19,7 +20,7 @@ console.log("🔧 Cloudinary Config:", {
 
 // Configurar storage do Multer com Cloudinary
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary: cld,
   params: async (req, file) => {
     // Remove extensão do nome original e adiciona timestamp
     const originalName = file.originalname.replace(/\.[^/.]+$/, "");
