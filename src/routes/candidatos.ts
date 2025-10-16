@@ -27,9 +27,9 @@ const storage = new CloudinaryStorage({
     
     return {
       folder: "curriculos",
-      public_id: `${sanitizedName}_${Date.now()}`,
+      public_id: `${sanitizedName}_${Date.now()}.pdf`, // ADICIONADO .pdf aqui
       resource_type: "raw" as const,
-      use_filename: true,
+      use_filename: false,
       unique_filename: false,
     };
   },
@@ -69,8 +69,8 @@ candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
   try {
     const { nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, vaga_id } = req.body;
     
-    // Pega a URL do arquivo no Cloudinary
-    let curriculo = req.file ? (req.file as any).path : null;
+    // Pega a URL do arquivo no Cloudinary (já vem com .pdf no final)
+    const curriculo = req.file ? (req.file as any).path : null;
     
     console.log("📤 Upload recebido:", {
       filename: req.file?.originalname,
@@ -78,18 +78,13 @@ candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
       size: req.file?.size
     });
     
-    // Garante que a URL termina com .pdf para download correto
-    if (curriculo && !curriculo.endsWith('.pdf')) {
-      curriculo = curriculo + '.pdf';
-    }
-    
     const { rows } = await pool.query(
       `INSERT INTO candidatos (nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id]
     );
     
-    console.log("✅ Candidato salvo com sucesso:", rows[0].id);
+    console.log("✅ Candidato salvo com sucesso:", rows[0].id, "| URL:", curriculo);
     res.status(201).json(rows[0]);
   } catch (error) {
     console.error("❌ Erro ao processar candidatura:", error);
