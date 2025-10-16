@@ -6,9 +6,15 @@ import { pool } from "../db";
 
 // Configurar Cloudinary
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
-  api_key: process.env.CLOUDINARY_API_KEY || "",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "",
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+console.log("🔧 Cloudinary Config:", {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "✅ Configurado" : "❌ Faltando",
+  api_key: process.env.CLOUDINARY_API_KEY ? "✅ Configurado" : "❌ Faltando",
+  api_secret: process.env.CLOUDINARY_API_SECRET ? "✅ Configurado" : "❌ Faltando"
 });
 
 // Configurar storage do Multer com Cloudinary
@@ -23,7 +29,6 @@ const storage = new CloudinaryStorage({
       folder: "curriculos",
       public_id: `${sanitizedName}_${Date.now()}`,
       resource_type: "raw" as const,
-      // Força o nome do arquivo com extensão .pdf no download
       use_filename: true,
       unique_filename: false,
     };
@@ -61,22 +66,35 @@ candidatosRouter.get("/:vagaId", async (req, res) => {
 });
 
 candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
-  const { nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, vaga_id } = req.body;
-  
-  // Pega a URL do arquivo no Cloudinary ao invés do filename local
-  let curriculo = req.file ? (req.file as any).path : null;
-  
-  // Garante que a URL termina com .pdf para download correto
-  if (curriculo && !curriculo.endsWith('.pdf')) {
-    curriculo = curriculo + '.pdf';
+  try {
+    const { nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, vaga_id } = req.body;
+    
+    // Pega a URL do arquivo no Cloudinary
+    let curriculo = req.file ? (req.file as any).path : null;
+    
+    console.log("📤 Upload recebido:", {
+      filename: req.file?.originalname,
+      cloudinary_url: curriculo,
+      size: req.file?.size
+    });
+    
+    // Garante que a URL termina com .pdf para download correto
+    if (curriculo && !curriculo.endsWith('.pdf')) {
+      curriculo = curriculo + '.pdf';
+    }
+    
+    const { rows } = await pool.query(
+      `INSERT INTO candidatos (nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id]
+    );
+    
+    console.log("✅ Candidato salvo com sucesso:", rows[0].id);
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    console.error("❌ Erro ao processar candidatura:", error);
+    res.status(500).json({ error: "Erro ao processar candidatura", details: (error as Error).message });
   }
-  
-  const { rows } = await pool.query(
-    `INSERT INTO candidatos (nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, curriculo, vaga_id]
-  );
-  res.status(201).json(rows[0]);
 });
 
 candidatosRouter.put("/:id", async (req, res) => {
