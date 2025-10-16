@@ -85,13 +85,30 @@ candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
       });
     }
     
-    // Pega a URL completa do Cloudinary
+    // Pega a URL completa do Cloudinary ou constrói manualmente
     const cloudinaryFile = req.file as any;
-    const curriculoUrl = cloudinaryFile?.path || null;
+    let curriculoUrl = null;
+    
+    if (cloudinaryFile) {
+      // Verificar se path é uma URL completa
+      if (cloudinaryFile.path && cloudinaryFile.path.startsWith('http')) {
+        curriculoUrl = cloudinaryFile.path;
+      } else {
+        // Construir URL do Cloudinary manualmente usando public_id e outros dados
+        const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+        const publicId = cloudinaryFile.filename || cloudinaryFile.public_id;
+        
+        if (cloudName && publicId) {
+          // URL do Cloudinary para arquivos raw
+          curriculoUrl = `https://res.cloudinary.com/${cloudName}/raw/upload/${publicId}`;
+        }
+      }
+    }
     
     console.log("📤 Upload recebido:", {
       filename: req.file?.originalname,
       cloudinary_url: curriculoUrl,
+      cloudinary_file: cloudinaryFile,
       size: req.file?.size
     });
     
