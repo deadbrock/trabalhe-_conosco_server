@@ -14,7 +14,13 @@ authRouter.post("/login", async (req, res) => {
   const ok = await bcrypt.compare(senha, user.senha_hash);
   if (!ok) return res.status(401).json({ error: "Credenciais inválidas" });
 
-  const token = jwt.sign({ sub: user.id, perfil: user.perfil }, process.env.JWT_SECRET || "secret", { expiresIn: "8h" });
+  const token = jwt.sign({ 
+    sub: user.id, 
+    nome: user.nome, 
+    email: user.email, 
+    perfil: user.perfil 
+  }, process.env.JWT_SECRET || "secret", { expiresIn: "8h" });
+  
   res.json({ token, usuario: { id: user.id, nome: user.nome, email: user.email, perfil: user.perfil } });
 });
 
