@@ -12,6 +12,7 @@ async function seed() {
       { nome: "Thais - RH", email: "rh@fgservices.com.br", senha: "recursosthais2025", perfil: "admin" },
       { nome: "Claudia - RH", email: "rh-2@fgservices.com.br", senha: "recursosclaudia2025", perfil: "admin" },
       { nome: "Josiellen - RH", email: "rh-3@fgservices.com.br", senha: "recursosjosiellen2025", perfil: "admin" },
+      { nome: "Leilani - Gestão RH", email: "gestaorh@fgservices.com.br", senha: "gestaoleilanisupersecreta2026", perfil: "admin" },
     ];
 
     for (const user of usuarios) {
