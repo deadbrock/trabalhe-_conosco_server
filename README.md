@@ -4,6 +4,7 @@
 - Node.js 18+
 - PostgreSQL 13+
 - WPPConnect para WhatsApp
+- Chromium e dependências do sistema
 
 ## Setup
 1. Copie `.env.example` para `.env` e ajuste as variáveis.
