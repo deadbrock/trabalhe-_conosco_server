@@ -12,7 +12,25 @@ nixPkgs = [
   'ttf-freefont',
   'fontconfig',
   'libxshmfence',
-  'libgbm'
+  'libgbm',
+  'glib',
+  'gtk3',
+  'pango',
+  'cairo',
+  'alsa-lib',
+  'libdrm',
+  'mesa',
+  'xorg.libX11',
+  'xorg.libXcomposite',
+  'xorg.libXdamage',
+  'xorg.libXext',
+  'xorg.libXfixes',
+  'xorg.libXrandr',
+  'cups',
+  'expat',
+  'dbus',
+  'at-spi2-core',
+  'at-spi2-atk'
 ]
 
 [phases.install]
