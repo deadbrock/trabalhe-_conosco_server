@@ -3,6 +3,7 @@ import multer from "multer";
 import * as cloudinary from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { pool } from "../db";
+import { notificarInscricao, notificarEmAnalise, notificarPreSelecionado, notificarAprovado, notificarReprovado } from "../services/gatilhosService";
 
 // Configurar Cloudinary
 const cld = cloudinary.v2;
@@ -119,7 +120,15 @@ candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
     );
     
     console.log("✅ Candidato salvo com sucesso:", rows[0].id, "| URL:", curriculoUrl);
-    res.status(201).json(rows[0]);
+    
+    // 🔔 Disparar gatilho de inscrição recebida
+    const candidato = rows[0];
+    notificarInscricao(candidato.id, candidato.vaga_id).catch(err => {
+      console.error('❌ Erro ao disparar gatilho de inscrição:', err);
+      // Não bloquear a resposta se o gatilho falhar
+    });
+    
+    res.status(201).json(candidato);
   } catch (error) {
     console.error("❌ Erro ao processar candidatura:", error);
     res.status(500).json({ error: "Erro ao processar candidatura", details: (error as Error).message });
@@ -127,12 +136,48 @@ candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
 });
 
 candidatosRouter.put("/:id", async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body as { status?: string };
-  const { rows } = await pool.query(
-    `UPDATE candidatos SET status = COALESCE($1, status) WHERE id = $2 RETURNING *`,
-    [status, id]
-  );
-  if (!rows[0]) return res.status(404).json({ error: "Candidato não encontrado" });
-  res.json(rows[0]);
+  try {
+    const { id } = req.params;
+    const { status } = req.body as { status?: string };
+    
+    const { rows } = await pool.query(
+      `UPDATE candidatos SET status = COALESCE($1, status) WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+    
+    if (!rows[0]) return res.status(404).json({ error: "Candidato não encontrado" });
+    
+    const candidato = rows[0];
+    
+    // 🔔 Disparar gatilhos baseados no status
+    if (status) {
+      switch (status) {
+        case 'Em análise':
+          notificarEmAnalise(candidato.id, candidato.vaga_id).catch(err => {
+            console.error('❌ Erro ao disparar gatilho "Em análise":', err);
+          });
+          break;
+        case 'Pré-selecionado':
+          notificarPreSelecionado(candidato.id, candidato.vaga_id).catch(err => {
+            console.error('❌ Erro ao disparar gatilho "Pré-selecionado":', err);
+          });
+          break;
+        case 'Aprovado':
+          notificarAprovado(candidato.id, candidato.vaga_id).catch(err => {
+            console.error('❌ Erro ao disparar gatilho "Aprovado":', err);
+          });
+          break;
+        case 'Reprovado':
+          notificarReprovado(candidato.id, candidato.vaga_id).catch(err => {
+            console.error('❌ Erro ao disparar gatilho "Reprovado":', err);
+          });
+          break;
+      }
+    }
+    
+    res.json(candidato);
+  } catch (error) {
+    console.error("❌ Erro ao atualizar candidato:", error);
+    res.status(500).json({ error: "Erro ao atualizar candidato" });
+  }
 });

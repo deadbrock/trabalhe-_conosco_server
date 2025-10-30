@@ -1,9 +1,25 @@
+# Configuração Nixpacks para Railway
+# Adiciona dependências necessárias para WPPConnect/Puppeteer
+
+[phases.setup]
+nixPkgs = [
+  'nodejs_18',
+  'chromium',
+  'nss',
+  'freetype',
+  'harfbuzz',
+  'ca-certificates',
+  'ttf-freefont',
+  'fontconfig',
+  'libxshmfence',
+  'libgbm'
+]
+
 [phases.install]
-cmds = ["npm install"]
+cmds = ['npm install']
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ['npm run build']
 
 [start]
-cmd = "npm run start"
-
+cmd = 'npm run start'
