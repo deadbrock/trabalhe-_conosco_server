@@ -3,6 +3,7 @@
 ## Requisitos
 - Node.js 18+
 - PostgreSQL 13+
+- WPPConnect para WhatsApp
 
 ## Setup
 1. Copie `.env.example` para `.env` e ajuste as variáveis.
