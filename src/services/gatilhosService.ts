@@ -36,7 +36,7 @@ interface DadosVariaveis {
   rh_nome?: string;
   rh_email?: string;
   rh_telefone?: string;
-  [key: string]: string | undefined;
+  [key: string]: string | number | undefined;
 }
 
 function devePularHorarioComercial(
@@ -169,8 +169,11 @@ export async function dispararGatilho(
 
     // Enviar Email se ativo
     if (gatilho.email_ativo && gatilho.email_conteudo) {
-      const assunto = await substituirVariaveisEmail(gatilho.email_assunto || '', variaveis);
-      const conteudo = await substituirVariaveisEmail(gatilho.email_conteudo, variaveis);
+      const variaveisLimpas = Object.fromEntries(
+        Object.entries(variaveis).map(([k, v]) => [k, v ?? ''])
+      ) as Record<string, string | number>;
+      const assunto = await substituirVariaveisEmail(gatilho.email_assunto || '', variaveisLimpas);
+      const conteudo = await substituirVariaveisEmail(gatilho.email_conteudo, variaveisLimpas);
 
       const resultado = await enviarEmail({
         destinatario: variaveis.email,
@@ -202,7 +205,10 @@ export async function dispararGatilho(
 
     // Enviar WhatsApp se ativo
     if (gatilho.whatsapp_ativo && gatilho.whatsapp_conteudo) {
-      const conteudo = await substituirVariaveisWhatsApp(gatilho.whatsapp_conteudo, variaveis);
+      const variaveisLimpas = Object.fromEntries(
+        Object.entries(variaveis).map(([k, v]) => [k, v ?? ''])
+      ) as Record<string, string | number>;
+      const conteudo = await substituirVariaveisWhatsApp(gatilho.whatsapp_conteudo, variaveisLimpas);
 
       const resultado = await enviarWhatsApp({
         numero: variaveis.telefone,

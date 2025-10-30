@@ -1,4 +1,5 @@
 import * as wppconnect from '@wppconnect-team/wppconnect';
+// @ts-ignore - qrcode-terminal não tem tipos
 import qrcode from 'qrcode-terminal';
 import { Pool } from 'pg';
 
@@ -73,7 +74,6 @@ export async function iniciarWhatsApp(): Promise<any> {
       devtools: false,
       useChrome: false,
       debug: false,
-      logConsole: false,
       browserArgs: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -83,7 +83,7 @@ export async function iniciarWhatsApp(): Promise<any> {
         '--no-zygote',
         '--disable-gpu'
       ]
-    });
+    } as any);
 
     console.log('✅ WhatsApp conectado com sucesso!');
     isInitializing = false;

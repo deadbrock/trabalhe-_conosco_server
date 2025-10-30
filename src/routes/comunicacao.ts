@@ -417,7 +417,7 @@ router.get('/estatisticas', async (req: Request, res: Response) => {
 
     result.rows.forEach(row => {
       const tipo = row.tipo as 'email' | 'whatsapp';
-      estatisticas[tipo] = {
+      const baseStats = {
         total: parseInt(row.total),
         sucesso: parseInt(row.sucesso),
         falhas: parseInt(row.falhas),
@@ -425,17 +425,14 @@ router.get('/estatisticas', async (req: Request, res: Response) => {
         taxa_sucesso: parseInt(row.total) > 0 
           ? Math.round((parseInt(row.sucesso) / parseInt(row.total)) * 100)
           : 0,
-        ...(tipo === 'email' 
-          ? { taxa_abertura: parseInt(row.total) > 0 
-              ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100)
-              : 0
-            }
-          : { taxa_leitura: parseInt(row.total) > 0 
-              ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100)
-              : 0
-            }
-        )
+        taxa_abertura: parseInt(row.total) > 0 
+          ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100)
+          : 0,
+        taxa_leitura: parseInt(row.total) > 0 
+          ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100)
+          : 0
       };
+      estatisticas[tipo] = baseStats;
     });
 
     res.json(estatisticas);
