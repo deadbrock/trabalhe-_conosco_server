@@ -261,10 +261,13 @@ export async function buscarQRCodeDoBanco(): Promise<string | null> {
   }
 }
 
-// Inicializar WhatsApp automaticamente ao startar o servidor
-if (process.env.NODE_ENV === 'production' || process.env.WHATSAPP_AUTO_START === 'true') {
+// Inicializar WhatsApp automaticamente ao startar o servidor (DESABILITADO)
+// Para habilitar, adicione WHATSAPP_AUTO_START=true nas variáveis de ambiente
+if (process.env.WHATSAPP_AUTO_START === 'true') {
   console.log('🚀 Iniciando WhatsApp automaticamente...');
   iniciarWhatsApp().catch(err => {
     console.error('❌ Erro ao iniciar WhatsApp automaticamente:', err);
   });
+} else {
+  console.log('ℹ️  WhatsApp auto-start desabilitado. Use /whatsapp/iniciar para conectar manualmente.');
 }
