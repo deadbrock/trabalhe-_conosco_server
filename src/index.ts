@@ -20,6 +20,7 @@ import templatesRouter from "./routes/templates";
 import comunicacaoRouter from "./routes/comunicacao";
 import gatilhosRouter from "./routes/gatilhos";
 import whatsappRouter from "./routes/whatsapp";
+import lgpdRouter from "./routes/lgpd";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -116,6 +117,16 @@ app.use("/whatsapp", (req, res, next) => {
   // Demais rotas protegidas
   requireAuth(req, res, next);
 }, whatsappRouter);
+
+// Rotas LGPD: /solicitar e /validar-codigo públicas, demais protegidas
+app.use("/lgpd", (req, res, next) => {
+  // Rotas públicas para candidatos
+  if (req.path === "/solicitar" || req.path === "/validar-codigo") {
+    return next();
+  }
+  // Demais rotas protegidas (RH apenas)
+  requireAuth(req, res, next);
+}, lgpdRouter);
 
 const port = process.env.PORT || 3333;
 app.listen(port, () => {
