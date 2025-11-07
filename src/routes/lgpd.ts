@@ -3,7 +3,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import pool from '../db';
+import { pool } from '../db';
 import { enviarEmail } from '../services/emailService';
 
 const router = Router();
