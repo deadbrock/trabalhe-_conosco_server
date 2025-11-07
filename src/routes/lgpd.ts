@@ -427,20 +427,15 @@ router.post('/exportar/:id', async (req: Request, res: Response) => {
         telefone: dados.telefone,
         data_nascimento: dados.data_nascimento,
         cpf: dados.cpf,
-        rg: dados.rg,
-        endereco: dados.endereco,
         cidade: dados.cidade,
         estado: dados.estado,
-        cep: dados.cep
+        bairro: dados.bairro
       },
       
       dados_profissionais: {
-        cargo_desejado: dados.cargo_desejado,
-        experiencia: dados.experiencia,
-        formacao: dados.formacao,
-        habilidades: dados.habilidades,
-        pretensao_salarial: dados.pretensao_salarial,
-        curriculum_url: dados.curriculum_url
+        curriculo: dados.curriculo,
+        vaga_id: dados.vaga_id,
+        status: dados.status
       },
       
       candidaturas: candidaturas.rows,
@@ -557,14 +552,11 @@ router.post('/excluir/:id', async (req: Request, res: Response) => {
          email = $2,
          telefone = '(00) 00000-0000',
          cpf = NULL,
-         rg = NULL,
          data_nascimento = NULL,
-         endereco = NULL,
          cidade = NULL,
          estado = NULL,
-         cep = NULL,
-         curriculum_url = NULL,
-         linkedin = NULL,
+         bairro = NULL,
+         curriculo = NULL,
          dados_excluidos = TRUE,
          data_exclusao = NOW(),
          motivo_exclusao = $3,
@@ -628,8 +620,9 @@ router.post('/excluir/:id', async (req: Request, res: Response) => {
             <li>Nome completo</li>
             <li>Email</li>
             <li>Telefone</li>
-            <li>Documentos (CPF, RG)</li>
-            <li>Endereço</li>
+            <li>Documentos (CPF)</li>
+            <li>Data de Nascimento</li>
+            <li>Endereço (Cidade, Estado, Bairro)</li>
             <li>Currículo</li>
             <li>Histórico de comunicações</li>
             <li>Agendamentos</li>
