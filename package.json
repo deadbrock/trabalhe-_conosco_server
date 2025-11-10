@@ -12,6 +12,7 @@
     "migrate:fase1": "ts-node src/migrate-fase1.ts",
     "migrate:fase3": "ts-node src/migrate-fase3.ts",
     "migrate:sprint2": "ts-node src/migrate-sprint2.ts",
+    "migrate:lgpd-status": "ts-node src/migrate-lgpd-status.ts",
     "seed": "ts-node src/seed.ts",
     "seed:templates": "ts-node src/seed-templates.ts",
     "postinstall": "npm run build",
