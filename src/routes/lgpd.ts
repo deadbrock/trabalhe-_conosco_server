@@ -52,26 +52,20 @@ router.post('/solicitar', async (req: Request, res: Response) => {
 
     // Buscar candidato pelo email
     const candidato = await pool.query(
-      'SELECT id, nome, email, telefone FROM candidatos WHERE LOWER(email) = LOWER($1)',
+      'SELECT id, nome, email, telefone FROM candidatos WHERE LOWER(email) = LOWER($1) AND (dados_excluidos IS NULL OR dados_excluidos = FALSE)',
       [email]
     );
 
-    if (candidato.rows.length === 0) {
-      return res.status(404).json({ 
-        error: 'Email não encontrado em nossa base de dados' 
-      });
-    }
+    const candidatoData = candidato.rows.length > 0 ? candidato.rows[0] : null;
 
-    const candidatoData = candidato.rows[0];
-
-    // Verificar se já existe solicitação pendente
+    // Verificar se já existe solicitação pendente para este email
     const solicitacaoPendente = await pool.query(
       `SELECT id FROM solicitacoes_lgpd 
-       WHERE candidato_id = $1 
+       WHERE LOWER(email_solicitante) = LOWER($1) 
        AND tipo = $2 
-       AND status IN ('pendente', 'em_analise')
+       AND status IN ('pendente', 'em_analise', 'aguardando_aprovacao_rh')
        AND created_at > NOW() - INTERVAL '24 hours'`,
-      [candidatoData.id, tipo]
+      [email, tipo]
     );
 
     if (solicitacaoPendente.rows.length > 0) {
@@ -85,14 +79,17 @@ router.post('/solicitar', async (req: Request, res: Response) => {
     const ip = obterIP(req);
     const userAgent = req.headers['user-agent'] || 'unknown';
 
+    // Definir status inicial: se candidato não encontrado, aguarda aprovação RH
+    const statusInicial = candidatoData ? 'pendente' : 'aguardando_aprovacao_rh';
+    
     // Criar solicitação
     const novaSolicitacao = await pool.query(
       `INSERT INTO solicitacoes_lgpd 
         (candidato_id, tipo, email_solicitante, telefone_solicitante, 
-         ip_solicitante, user_agent, codigo_verificacao, data_envio_codigo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-       RETURNING id, tipo, email_solicitante, created_at`,
-      [candidatoData.id, tipo, email, telefone || null, ip, userAgent, codigoVerificacao]
+         ip_solicitante, user_agent, codigo_verificacao, data_envio_codigo, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+       RETURNING id, tipo, email_solicitante, created_at, status`,
+      [candidatoData?.id || null, tipo, email, telefone || null, ip, userAgent, codigoVerificacao, statusInicial]
     );
 
     const solicitacao = novaSolicitacao.rows[0];
@@ -104,9 +101,18 @@ router.post('/solicitar', async (req: Request, res: Response) => {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #4F46E5;">🔐 Confirmação de Solicitação LGPD</h2>
         
-        <p>Olá, <strong>${candidatoData.nome}</strong>!</p>
+        <p>Olá${candidatoData ? `, <strong>${candidatoData.nome}</strong>` : ''}!</p>
         
         <p>Recebemos sua solicitação de <strong>${tipoTexto} de Dados Pessoais</strong>.</p>
+        
+        ${!candidatoData ? `
+        <div style="background-color: #FEF3C7; padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin: 20px 0;">
+          <p style="margin: 0; color: #92400E; font-size: 14px;">
+            ⚠️ <strong>Atenção:</strong> Não encontramos uma candidatura associada a este email em nossa base de dados. 
+            Sua solicitação será analisada por nossa equipe de RH para verificação.
+          </p>
+        </div>
+        ` : ''}
         
         <div style="background-color: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
           <p style="margin: 0; font-size: 14px; color: #6B7280;">Seu código de verificação é:</p>
@@ -698,6 +704,121 @@ router.post('/rejeitar/:id', async (req: Request, res: Response) => {
     console.error('❌ Erro ao rejeitar solicitação:', error);
     res.status(500).json({ 
       error: 'Erro ao rejeitar solicitação',
+      detalhes: error.message 
+    });
+  }
+});
+
+// ==========================================
+// POST /lgpd/notificar-email-nao-encontrado/:id - Notificar solicitante (PROTEGIDA - RH)
+// ==========================================
+router.post('/notificar-email-nao-encontrado/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const usuarioId = (req as any).user?.id;
+
+    console.log(`📧 [LGPD] Enviando notificação de email não encontrado - Solicitação #${id}`);
+
+    // Buscar solicitação
+    const solicitacao = await pool.query(
+      `SELECT * FROM solicitacoes_lgpd WHERE id = $1`,
+      [id]
+    );
+
+    if (solicitacao.rows.length === 0) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+
+    const dados = solicitacao.rows[0];
+
+    // Verificar se candidato realmente não foi encontrado
+    if (dados.candidato_id) {
+      return res.status(400).json({ 
+        error: 'Esta solicitação possui um candidato associado. Use a função de exclusão normal.' 
+      });
+    }
+
+    const tipoTexto = dados.tipo === 'exportacao' ? 'exportação' : 'exclusão';
+
+    // Enviar email ao solicitante
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #F59E0B;">⚠️ Solicitação LGPD - Dados Não Encontrados</h2>
+        
+        <p>Olá!</p>
+        
+        <p>Recebemos sua solicitação de <strong>${tipoTexto} de dados pessoais</strong>, porém:</p>
+        
+        <div style="background-color: #FEF3C7; padding: 20px; border-radius: 8px; border-left: 4px solid #F59E0B; margin: 20px 0;">
+          <h4 style="margin-top: 0; color: #92400E;">📋 Não encontramos registros com este email</h4>
+          <p style="color: #92400E; margin: 5px 0;">
+            <strong>Email informado:</strong> ${dados.email_solicitante}
+          </p>
+          <p style="color: #92400E; margin: 5px 0;">
+            <strong>Protocolo:</strong> LGPD-${id.toString().padStart(6, '0')}
+          </p>
+        </div>
+        
+        <h3 style="color: #4F46E5;">🔍 O que fazer agora?</h3>
+        
+        <ol style="line-height: 1.8;">
+          <li><strong>Verifique se você usou o email correto</strong> que foi cadastrado no momento da candidatura</li>
+          <li>Se você possui mais de um email, tente fazer uma nova solicitação com outro endereço</li>
+          <li>Se você tem certeza de que se candidatou com este email, entre em contato conosco</li>
+        </ol>
+        
+        <div style="background-color: #E0F2FE; padding: 15px; border-radius: 8px; border-left: 4px solid #0284C7; margin: 20px 0;">
+          <p style="margin: 0; color: #075985; font-size: 14px;">
+            💡 <strong>Dica:</strong> Verifique se o email não foi digitado incorretamente ou se você possui variações 
+            (ex: joao@email.com vs joaosilva@email.com)
+          </p>
+        </div>
+        
+        <h3 style="color: #4F46E5;">📞 Precisa de ajuda?</h3>
+        <p>Entre em contato conosco:</p>
+        <ul>
+          <li><strong>Email:</strong> lgpd@fgservices.com.br</li>
+          <li><strong>WhatsApp:</strong> (81) 99999-9999</li>
+        </ul>
+        
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
+        
+        <p style="font-size: 12px; color: #9CA3AF; text-align: center;">
+          <strong>FG Services</strong><br>
+          Encarregado de Dados (DPO): lgpd@fgservices.com.br<br>
+          Este email foi enviado em cumprimento à LGPD (Lei nº 13.709/2018)
+        </p>
+      </div>
+    `;
+
+    await enviarEmail({
+      destinatario: dados.email_solicitante,
+      assunto: `⚠️ Solicitação LGPD - Email Não Encontrado (Protocolo ${id.toString().padStart(6, '0')})`,
+      conteudo: emailHtml
+    });
+
+    // Atualizar status da solicitação
+    await pool.query(
+      `UPDATE solicitacoes_lgpd 
+       SET status = 'email_nao_encontrado', 
+           aprovado_por = $1,
+           observacoes = 'Email não encontrado na base de dados. Solicitante notificado.',
+           data_conclusao = NOW()
+       WHERE id = $2`,
+      [usuarioId, id]
+    );
+
+    console.log(`✅ Notificação enviada para ${dados.email_solicitante}`);
+
+    res.json({
+      message: '✅ Email enviado ao solicitante informando que não encontramos dados cadastrados',
+      protocolo: `LGPD-${id.toString().padStart(6, '0')}`
+    });
+
+  } catch (error: any) {
+    console.error('❌ Erro ao enviar notificação:', error);
+    res.status(500).json({ 
+      error: 'Erro ao enviar notificação',
       detalhes: error.message 
     });
   }
