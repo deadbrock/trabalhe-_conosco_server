@@ -59,16 +59,6 @@ candidatosRouter.get("/", async (req, res) => {
   res.json(rows);
 });
 
-// Listar candidatos de uma vaga específica
-candidatosRouter.get("/:vagaId", async (req, res) => {
-  const { vagaId } = req.params;
-  const { rows } = await pool.query(
-    "SELECT c.*, v.titulo as vaga_titulo FROM candidatos c LEFT JOIN vagas v ON c.vaga_id = v.id WHERE c.vaga_id = $1 ORDER BY c.data_cadastro DESC",
-    [vagaId]
-  );
-  res.json(rows);
-});
-
 candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
   try {
     const { nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, vaga_id } = req.body;
@@ -184,6 +174,7 @@ candidatosRouter.put("/:id", async (req, res) => {
 });
 
 // Enviar candidato aprovado para o sistema FGS
+// IMPORTANTE: Esta rota deve vir ANTES de GET /:vagaId para evitar conflito de rotas
 candidatosRouter.post("/:id/enviar-fgs", async (req, res) => {
   try {
     const { id } = req.params;
@@ -232,4 +223,15 @@ candidatosRouter.post("/:id/enviar-fgs", async (req, res) => {
       details: (error as Error).message 
     });
   }
+});
+
+// Listar candidatos de uma vaga específica
+// IMPORTANTE: Esta rota deve vir DEPOIS das rotas específicas (como /:id/enviar-fgs)
+candidatosRouter.get("/:vagaId", async (req, res) => {
+  const { vagaId } = req.params;
+  const { rows } = await pool.query(
+    "SELECT c.*, v.titulo as vaga_titulo FROM candidatos c LEFT JOIN vagas v ON c.vaga_id = v.id WHERE c.vaga_id = $1 ORDER BY c.data_cadastro DESC",
+    [vagaId]
+  );
+  res.json(rows);
 });
