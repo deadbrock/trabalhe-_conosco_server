@@ -4,6 +4,7 @@ import * as cloudinary from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { pool } from "../db";
 import { notificarInscricao, notificarEmAnalise, notificarPreSelecionado, notificarAprovado, notificarReprovado } from "../services/gatilhosService";
+import { enviarParaFGS } from "../services/fgsService";
 
 // Configurar Cloudinary
 const cld = cloudinary.v2;
@@ -55,16 +56,6 @@ candidatosRouter.get("/", async (req, res) => {
   query += " ORDER BY c.data_cadastro DESC";
   
   const { rows } = await pool.query(query, params);
-  res.json(rows);
-});
-
-// Listar candidatos de uma vaga específica
-candidatosRouter.get("/:vagaId", async (req, res) => {
-  const { vagaId } = req.params;
-  const { rows } = await pool.query(
-    "SELECT c.*, v.titulo as vaga_titulo FROM candidatos c LEFT JOIN vagas v ON c.vaga_id = v.id WHERE c.vaga_id = $1 ORDER BY c.data_cadastro DESC",
-    [vagaId]
-  );
   res.json(rows);
 });
 
@@ -180,4 +171,67 @@ candidatosRouter.put("/:id", async (req, res) => {
     console.error("❌ Erro ao atualizar candidato:", error);
     res.status(500).json({ error: "Erro ao atualizar candidato" });
   }
+});
+
+// Enviar candidato aprovado para o sistema FGS
+// IMPORTANTE: Esta rota deve vir ANTES de GET /:vagaId para evitar conflito de rotas
+candidatosRouter.post("/:id/enviar-fgs", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const candidatoId = parseInt(id);
+    
+    if (isNaN(candidatoId)) {
+      return res.status(400).json({ error: "ID do candidato inválido" });
+    }
+    
+    // Verificar se o candidato existe e está aprovado
+    const { rows } = await pool.query(
+      `SELECT id, status FROM candidatos WHERE id = $1`,
+      [candidatoId]
+    );
+    
+    if (!rows[0]) {
+      return res.status(404).json({ error: "Candidato não encontrado" });
+    }
+    
+    if (rows[0].status !== 'aprovado') {
+      return res.status(400).json({ 
+        error: "Apenas candidatos aprovados podem ser enviados para admissão",
+        message: `O candidato está com status "${rows[0].status}". Aprove o candidato primeiro.`
+      });
+    }
+    
+    // Enviar para FGS
+    const resultado = await enviarParaFGS(candidatoId);
+    
+    if (resultado.success) {
+      res.json({
+        success: true,
+        message: resultado.message,
+        data: resultado.data,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: resultado.message,
+      });
+    }
+  } catch (error) {
+    console.error("❌ Erro ao enviar candidato para FGS:", error);
+    res.status(500).json({ 
+      error: "Erro ao enviar candidato para FGS",
+      details: (error as Error).message 
+    });
+  }
+});
+
+// Listar candidatos de uma vaga específica
+// IMPORTANTE: Esta rota deve vir DEPOIS das rotas específicas (como /:id/enviar-fgs)
+candidatosRouter.get("/:vagaId", async (req, res) => {
+  const { vagaId } = req.params;
+  const { rows } = await pool.query(
+    "SELECT c.*, v.titulo as vaga_titulo FROM candidatos c LEFT JOIN vagas v ON c.vaga_id = v.id WHERE c.vaga_id = $1 ORDER BY c.data_cadastro DESC",
+    [vagaId]
+  );
+  res.json(rows);
 });

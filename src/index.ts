@@ -20,6 +20,7 @@ import templatesRouter from "./routes/templates";
 import comunicacaoRouter from "./routes/comunicacao";
 import gatilhosRouter from "./routes/gatilhos";
 import whatsappRouter from "./routes/whatsapp";
+import lgpdRouter from "./routes/lgpd";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -37,6 +38,22 @@ app.use("/uploads", express.static(uploadsDir));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+// Rota pública de status do WhatsApp (antes da autenticação)
+app.get("/whatsapp-status", async (_req, res) => {
+  try {
+    const { verificarConexao } = await import("./services/whatsappService");
+    const conectado = await verificarConexao();
+    res.json({
+      conectado,
+      status: conectado ? 'connected' : 'disconnected',
+      tipo: 'Twilio WhatsApp API',
+      configurado: !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "Erro ao verificar status", message: error.message });
+  }
 });
 
 // públicas
@@ -57,15 +74,17 @@ vagasCombinedRouter.use((req, res, next) => {
 vagasCombinedRouter.use(vagasRouter);
 app.use("/vagas", vagasCombinedRouter);
 
-// Rotas de candidatos: POST público (candidatura) + GET/PUT protegidos (RH)
+// Rotas de candidatos: POST / público (candidatura) + demais protegidas (RH)
 const candidatosCombinedRouter = Router();
 
-// POST público (candidatura sem autenticação), GET e PUT protegidos
+// POST / público (candidatura sem autenticação), demais rotas protegidas
 candidatosCombinedRouter.use((req, res, next) => {
-  if (req.method === "POST") {
+  // Permitir POST apenas na rota raiz (candidatura pública)
+  if (req.method === "POST" && req.path === "/") {
     return next(); // Permite candidatura pública
   }
-  requireAuth(req, res, next); // Protege GET e PUT (RH apenas)
+  // Todas as outras rotas (GET, PUT, POST /:id/enviar-fgs, etc.) requerem autenticação
+  requireAuth(req, res, next);
 });
 
 candidatosCombinedRouter.use(candidatosRouter);
@@ -90,9 +109,31 @@ app.use("/avaliacoes", requireAuth, avaliacoesRouter);
 app.use("/templates", requireAuth, templatesRouter);
 app.use("/comunicacao", requireAuth, comunicacaoRouter);
 app.use("/gatilhos", requireAuth, gatilhosRouter);
-app.use("/whatsapp", requireAuth, whatsappRouter);
+
+// Rotas de WhatsApp: /status público, demais protegidas
+app.use("/whatsapp", (req, res, next) => {
+  // Rota /status é pública
+  if (req.path === "/status") {
+    return next();
+  }
+  // Demais rotas protegidas
+  requireAuth(req, res, next);
+}, whatsappRouter);
+
+// Rotas LGPD: /solicitar e /validar-codigo públicas, demais protegidas
+app.use("/lgpd", (req, res, next) => {
+  // Rotas públicas para candidatos
+  if (req.path === "/solicitar" || req.path === "/validar-codigo") {
+    return next();
+  }
+  // Demais rotas protegidas (RH apenas)
+  requireAuth(req, res, next);
+}, lgpdRouter);
 
 const port = process.env.PORT || 3333;
 app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+  console.log(`🚀 API v1.3.2 listening on http://localhost:${port}`);
+  console.log(`📱 WhatsApp Status disponível em: /whatsapp-status`);
+  console.log(`🔗 Twilio WhatsApp API Configurado: ${!!process.env.TWILIO_ACCOUNT_SID}`);
+  console.log(`🔐 Rotas LGPD disponíveis: /lgpd/solicitar, /lgpd/validar-codigo`);
 });
