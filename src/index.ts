@@ -74,15 +74,17 @@ vagasCombinedRouter.use((req, res, next) => {
 vagasCombinedRouter.use(vagasRouter);
 app.use("/vagas", vagasCombinedRouter);
 
-// Rotas de candidatos: POST público (candidatura) + GET/PUT protegidos (RH)
+// Rotas de candidatos: POST / público (candidatura) + demais protegidas (RH)
 const candidatosCombinedRouter = Router();
 
-// POST público (candidatura sem autenticação), GET e PUT protegidos
+// POST / público (candidatura sem autenticação), demais rotas protegidas
 candidatosCombinedRouter.use((req, res, next) => {
-  if (req.method === "POST") {
+  // Permitir POST apenas na rota raiz (candidatura pública)
+  if (req.method === "POST" && req.path === "/") {
     return next(); // Permite candidatura pública
   }
-  requireAuth(req, res, next); // Protege GET e PUT (RH apenas)
+  // Todas as outras rotas (GET, PUT, POST /:id/enviar-fgs, etc.) requerem autenticação
+  requireAuth(req, res, next);
 });
 
 candidatosCombinedRouter.use(candidatosRouter);
