@@ -130,7 +130,7 @@ app.use("/lgpd", (req, res, next) => {
 
 const port = process.env.PORT || 3333;
 app.listen(port, () => {
-  console.log(`🚀 API v1.3.1 listening on http://localhost:${port}`);
+  console.log(`🚀 API v1.3.2 listening on http://localhost:${port}`);
   console.log(`📱 WhatsApp Status disponível em: /whatsapp-status`);
   console.log(`🔗 Twilio WhatsApp API Configurado: ${!!process.env.TWILIO_ACCOUNT_SID}`);
   console.log(`🔐 Rotas LGPD disponíveis: /lgpd/solicitar, /lgpd/validar-codigo`);
