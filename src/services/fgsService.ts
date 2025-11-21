@@ -145,9 +145,12 @@ export async function enviarParaFGS(candidatoId: number): Promise<{ success: boo
       },
       
       // Informações da vaga
+      // Nota: Não enviamos vaga.id porque o FGS espera UUID, mas nosso sistema usa integer
+      // O FGS pode usar o título ou buscar a vaga por outros critérios
       vaga: {
-        id: dadosCandidato.vaga_id,
+        // id: dadosCandidato.vaga_id, // Removido - FGS espera UUID, não integer
         titulo: dadosCandidato.vaga_titulo,
+        id_origem: dadosCandidato.vaga_id, // ID do sistema origem (para referência)
       },
       
       // Metadados
