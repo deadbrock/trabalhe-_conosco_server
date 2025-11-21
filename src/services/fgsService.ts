@@ -81,11 +81,30 @@ export async function buscarDadosCandidato(candidatoId: number): Promise<DadosCa
 export async function enviarParaFGS(candidatoId: number): Promise<{ success: boolean; message: string; data?: any }> {
   try {
     // Verificar se a URL do FGS está configurada
-    const fgsUrl = process.env.FGS_API_URL;
-    const fgsApiKey = process.env.FGS_API_KEY;
+    let fgsUrl = process.env.FGS_API_URL?.trim();
+    let fgsApiKey = process.env.FGS_API_KEY?.trim();
     
     if (!fgsUrl) {
       throw new Error('FGS_API_URL não configurada. Configure a variável de ambiente FGS_API_URL com a URL do sistema FGS.');
+    }
+    
+    // Validar URL (deve ser uma URL válida, não apenas domínio)
+    if (!fgsUrl.startsWith('http://') && !fgsUrl.startsWith('https://')) {
+      throw new Error(`FGS_API_URL inválida. Deve começar com http:// ou https://. Valor atual: ${fgsUrl}`);
+    }
+    
+    // Validar e limpar API key (remover quebras de linha, espaços extras, etc.)
+    if (fgsApiKey) {
+      fgsApiKey = fgsApiKey.replace(/\r\n/g, '').replace(/\n/g, '').trim();
+      
+      // Verificar se não é um exemplo/documentação
+      if (fgsApiKey.toLowerCase().includes('curl') || 
+          fgsApiKey.toLowerCase().includes('exemplo') || 
+          fgsApiKey.toLowerCase().includes('sua-api-key') ||
+          fgsApiKey.toLowerCase().includes('seu-sistema-fgs')) {
+        console.warn('⚠️ FGS_API_KEY parece ser um exemplo/documentação. Configure um token real.');
+        fgsApiKey = undefined; // Não usar se for exemplo
+      }
     }
     
     // Buscar dados completos do candidato
@@ -149,6 +168,7 @@ export async function enviarParaFGS(candidatoId: number): Promise<{ success: boo
       candidato_id: candidatoId,
       nome: dadosCandidato.nome,
       fgs_url: fgsUrl,
+      tem_api_key: !!fgsApiKey,
     });
     
     // Fazer requisição para o FGS
@@ -179,18 +199,34 @@ export async function enviarParaFGS(candidatoId: number): Promise<{ success: boo
     // Tratar diferentes tipos de erro
     if (error.response) {
       // Erro da API do FGS
+      const status = error.response.status;
+      const errorData = error.response.data;
+      
+      console.error('❌ Erro da API FGS:', {
+        status,
+        data: errorData,
+        url: fgsUrl,
+      });
+      
       return {
         success: false,
-        message: `Erro ao comunicar com FGS: ${error.response.data?.message || error.response.statusText}`,
+        message: `Erro ao comunicar com FGS (${status}): ${errorData?.error || errorData?.message || error.response.statusText}`,
       };
     } else if (error.request) {
       // Erro de conexão
+      console.error('❌ Erro de conexão com FGS:', {
+        url: fgsUrl,
+        message: error.message,
+      });
+      
       return {
         success: false,
-        message: 'Erro de conexão com o sistema FGS. Verifique se o serviço está online.',
+        message: `Erro de conexão com o sistema FGS. Verifique se o serviço está online e a URL está correta: ${fgsUrl}`,
       };
     } else {
       // Outro erro
+      console.error('❌ Erro desconhecido ao enviar para FGS:', error);
+      
       return {
         success: false,
         message: error.message || 'Erro desconhecido ao enviar para FGS',
