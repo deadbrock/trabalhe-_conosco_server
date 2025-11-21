@@ -1,109 +1,65 @@
-import { Router, Request, Response } from "express";
-import { 
-  iniciarWhatsApp, 
-  verificarConexao, 
-  desconectarWhatsApp, 
-  obterQRCode,
-  buscarQRCodeDoBanco,
-  enviarWhatsApp
-} from "../services/whatsappService";
+/**
+ * 📱 Rotas de WhatsApp (Twilio)
+ */
+
+import { Router, Request, Response } from 'express';
+import {
+  enviarWhatsApp,
+  verificarConexao,
+  obterInfoConta,
+  obterSaldo,
+  buscarHistoricoMensagens,
+  validarNumero,
+  formatarNumero
+} from '../services/whatsappService';
 
 const router = Router();
 
-// GET /whatsapp/status - Verificar status da conexão
+/**
+ * GET /whatsapp/status
+ * Verifica status da conexão com Twilio
+ */
 router.get("/status", async (req: Request, res: Response) => {
   try {
     const conectado = await verificarConexao();
     
-    res.json({
+    let info: any = {
       conectado,
-      status: conectado ? 'connected' : 'disconnected'
-    });
-  } catch (error) {
-    console.error("Erro ao verificar status:", error);
-    res.status(500).json({ error: "Erro ao verificar status" });
-  }
-});
+      status: conectado ? 'connected' : 'disconnected',
+      tipo: 'Twilio WhatsApp API'
+    };
 
-// GET /whatsapp/qrcode - Obter QR Code para conectar
-router.get("/qrcode", async (req: Request, res: Response) => {
-  try {
-    // Primeiro tentar obter QR Code da memória
-    let qrcode = obterQRCode();
-    
-    // Se não tiver em memória, buscar do banco
-    if (!qrcode) {
-      qrcode = await buscarQRCodeDoBanco();
-    }
-    
-    // Se ainda não tiver, iniciar nova conexão
-    if (!qrcode) {
-      console.log('📱 Iniciando nova conexão do WhatsApp...');
-      await iniciarWhatsApp();
-      
-      // Aguardar alguns segundos para o QR Code ser gerado
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      qrcode = obterQRCode();
-      
-      if (!qrcode) {
-        qrcode = await buscarQRCodeDoBanco();
+    // Se conectado, buscar informações da conta
+    if (conectado) {
+      try {
+        const conta = await obterInfoConta();
+        const saldo = await obterSaldo();
+        
+        info = {
+          ...info,
+          conta: conta.nome,
+          saldo,
+          numero: process.env.TWILIO_WHATSAPP_NUMBER
+        };
+      } catch (err) {
+        console.error('Erro ao buscar informações da conta:', err);
       }
     }
-    
-    if (qrcode) {
-      res.json({
-        qrcode,
-        message: 'Escaneie o QR Code com o WhatsApp'
-      });
-    } else {
-      res.status(503).json({
-        error: 'QR Code ainda não gerado',
-        message: 'Aguarde alguns segundos e tente novamente'
-      });
-    }
+
+    res.json(info);
   } catch (error: any) {
-    console.error("Erro ao obter QR Code:", error);
+    console.error("Erro ao verificar status:", error);
     res.status(500).json({ 
-      error: "Erro ao obter QR Code",
+      error: "Erro ao verificar status",
       message: error.message 
     });
   }
 });
 
-// POST /whatsapp/iniciar - Forçar inicialização
-router.post("/iniciar", async (req: Request, res: Response) => {
-  try {
-    await iniciarWhatsApp();
-    
-    res.json({
-      message: 'WhatsApp iniciado com sucesso',
-      status: 'starting'
-    });
-  } catch (error: any) {
-    console.error("Erro ao iniciar WhatsApp:", error);
-    res.status(500).json({ 
-      error: "Erro ao iniciar WhatsApp",
-      message: error.message 
-    });
-  }
-});
-
-// POST /whatsapp/desconectar - Desconectar WhatsApp
-router.post("/desconectar", async (req: Request, res: Response) => {
-  try {
-    await desconectarWhatsApp();
-    
-    res.json({
-      message: 'WhatsApp desconectado com sucesso'
-    });
-  } catch (error) {
-    console.error("Erro ao desconectar WhatsApp:", error);
-    res.status(500).json({ error: "Erro ao desconectar WhatsApp" });
-  }
-});
-
-// POST /whatsapp/testar - Enviar mensagem de teste
+/**
+ * POST /whatsapp/testar
+ * Envia mensagem de teste
+ */
 router.post("/testar", async (req: Request, res: Response) => {
   try {
     const { numero, mensagem } = req.body;
@@ -113,13 +69,25 @@ router.post("/testar", async (req: Request, res: Response) => {
         error: 'Número e mensagem são obrigatórios' 
       });
     }
+
+    // Validar número
+    if (!validarNumero(numero)) {
+      return res.status(400).json({
+        error: 'Número de telefone inválido',
+        message: 'Use o formato: (11) 99999-9999 ou 11999999999'
+      });
+    }
+    
+    console.log(`📤 Teste de envio para ${numero}: ${mensagem.substring(0, 30)}...`);
     
     const resultado = await enviarWhatsApp({ numero, mensagem });
     
     if (resultado.sucesso) {
       res.json({
-        message: 'Mensagem enviada com sucesso',
-        messageId: resultado.messageId
+        message: 'Mensagem enviada com sucesso via Twilio!',
+        messageId: resultado.messageId,
+        para: formatarNumero(numero),
+        status: 'sent'
       });
     } else {
       res.status(500).json({
@@ -136,5 +104,100 @@ router.post("/testar", async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+/**
+ * GET /whatsapp/historico
+ * Busca histórico de mensagens enviadas
+ */
+router.get("/historico", async (req: Request, res: Response) => {
+  try {
+    const limite = parseInt(req.query.limite as string) || 20;
+    
+    const historico = await buscarHistoricoMensagens(limite);
+    
+    res.json({
+      total: historico.length,
+      mensagens: historico
+    });
+  } catch (error: any) {
+    console.error("Erro ao buscar histórico:", error);
+    res.status(500).json({ 
+      error: "Erro ao buscar histórico",
+      message: error.message 
+    });
+  }
+});
 
+/**
+ * GET /whatsapp/saldo
+ * Obtém saldo da conta Twilio
+ */
+router.get("/saldo", async (req: Request, res: Response) => {
+  try {
+    const saldo = await obterSaldo();
+    
+    res.json({
+      saldo,
+      message: 'Saldo disponível na conta Twilio'
+    });
+  } catch (error: any) {
+    console.error("Erro ao obter saldo:", error);
+    res.status(500).json({ 
+      error: "Erro ao obter saldo",
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * GET /whatsapp/info
+ * Obtém informações da conta Twilio
+ */
+router.get("/info", async (req: Request, res: Response) => {
+  try {
+    const info = await obterInfoConta();
+    
+    res.json(info);
+  } catch (error: any) {
+    console.error("Erro ao obter info da conta:", error);
+    res.status(500).json({ 
+      error: "Erro ao obter informações da conta",
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * POST /whatsapp/validar-numero
+ * Valida formato de número de telefone
+ */
+router.post("/validar-numero", (req: Request, res: Response) => {
+  try {
+    const { numero } = req.body;
+    
+    if (!numero) {
+      return res.status(400).json({ 
+        error: 'Número é obrigatório' 
+      });
+    }
+
+    const valido = validarNumero(numero);
+    const formatado = valido ? formatarNumero(numero) : null;
+    
+    res.json({
+      valido,
+      numero_original: numero,
+      numero_formatado: formatado,
+      message: valido 
+        ? 'Número válido' 
+        : 'Número inválido. Use o formato: (11) 99999-9999'
+    });
+  } catch (error: any) {
+    console.error("Erro ao validar número:", error);
+    res.status(500).json({ 
+      error: "Erro ao validar número",
+      message: error.message 
+    });
+  }
+});
+
+export default router;
