@@ -79,10 +79,14 @@ export async function buscarDadosCandidato(candidatoId: number): Promise<DadosCa
  * Envia dados do candidato para o sistema FGS
  */
 export async function enviarParaFGS(candidatoId: number): Promise<{ success: boolean; message: string; data?: any }> {
+  // Declarar variáveis fora do try para acesso no catch
+  let fgsUrl: string | undefined;
+  let fgsApiKey: string | undefined;
+  
   try {
     // Verificar se a URL do FGS está configurada
-    let fgsUrl = process.env.FGS_API_URL?.trim();
-    let fgsApiKey = process.env.FGS_API_KEY?.trim();
+    fgsUrl = process.env.FGS_API_URL?.trim();
+    fgsApiKey = process.env.FGS_API_KEY?.trim();
     
     if (!fgsUrl) {
       throw new Error('FGS_API_URL não configurada. Configure a variável de ambiente FGS_API_URL com a URL do sistema FGS.');
@@ -205,7 +209,7 @@ export async function enviarParaFGS(candidatoId: number): Promise<{ success: boo
       console.error('❌ Erro da API FGS:', {
         status,
         data: errorData,
-        url: fgsUrl,
+        url: fgsUrl || 'não configurada',
       });
       
       return {
@@ -215,13 +219,13 @@ export async function enviarParaFGS(candidatoId: number): Promise<{ success: boo
     } else if (error.request) {
       // Erro de conexão
       console.error('❌ Erro de conexão com FGS:', {
-        url: fgsUrl,
+        url: fgsUrl || 'não configurada',
         message: error.message,
       });
       
       return {
         success: false,
-        message: `Erro de conexão com o sistema FGS. Verifique se o serviço está online e a URL está correta: ${fgsUrl}`,
+        message: `Erro de conexão com o sistema FGS. Verifique se o serviço está online e a URL está correta: ${fgsUrl || 'não configurada'}`,
       };
     } else {
       // Outro erro
