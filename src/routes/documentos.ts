@@ -40,6 +40,8 @@ router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: R
     const { candidatoId } = req.params;
     const { enviarNotificacao = true } = req.body; // Opção de enviar ou não notificação
     
+    console.log(`📋 Gerando link de documentos para candidato ID: ${candidatoId}`);
+    
     // Verificar se candidato existe e está aprovado
     const candidatoResult = await pool.query(
       `SELECT c.id, c.nome, c.email, c.telefone, c.status, c.vaga_id, v.titulo as vaga_titulo 
@@ -50,12 +52,16 @@ router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: R
     );
     
     if (candidatoResult.rows.length === 0) {
+      console.log(`❌ Candidato ${candidatoId} não encontrado`);
       return res.status(404).json({ error: 'Candidato não encontrado' });
     }
     
     const candidato = candidatoResult.rows[0];
     
+    console.log(`✅ Candidato encontrado: ${candidato.nome} | Status: ${candidato.status}`);
+    
     if (candidato.status !== 'aprovado') {
+      console.log(`❌ Status inválido: ${candidato.status} (esperado: aprovado)`);
       return res.status(400).json({ error: 'Apenas candidatos aprovados podem receber link de documentos' });
     }
     
@@ -87,10 +93,14 @@ router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: R
     // Construir link
     const linkDocumentos = `${process.env.FRONTEND_URL}/documentos/${tokenAcesso}`;
     
+    console.log(`🔗 Link gerado: ${linkDocumentos}`);
+    console.log(`📧 Enviar notificação: ${enviarNotificacao}`);
+    
     // Enviar notificação por email/WhatsApp
     let notificacaoResult = null;
     
     if (enviarNotificacao) {
+      console.log(`📤 Enviando notificação para ${candidato.email} / ${candidato.telefone}`);
       notificacaoResult = await enviarNotificacaoDocumentos({
         nome: candidato.nome,
         email: candidato.email,
@@ -98,7 +108,10 @@ router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: R
         linkDocumentos,
         vagaTitulo: candidato.vaga_titulo,
       });
+      console.log(`📊 Resultado notificação:`, notificacaoResult);
     }
+    
+    console.log(`✅ Link criado com sucesso! Token: ${tokenAcesso}`);
     
     res.json({
       success: true,
@@ -126,6 +139,8 @@ router.get('/:token', async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
     
+    console.log(`📄 Buscando documentos para token: ${token}`);
+    
     // Buscar registro de documentos
     const docResult = await pool.query(
       `SELECT 
@@ -142,16 +157,24 @@ router.get('/:token', async (req: Request, res: Response) => {
       [token]
     );
     
+    console.log(`📊 Resultado da busca: ${docResult.rows.length} registro(s) encontrado(s)`);
+    
     if (docResult.rows.length === 0) {
+      console.log(`❌ Token não encontrado: ${token}`);
       return res.status(404).json({ error: 'Link inválido ou expirado' });
     }
     
     const doc = docResult.rows[0];
     
+    console.log(`✅ Documento encontrado para candidato: ${doc.candidato_nome}`);
+    
     // Verificar se o token expirou
     if (doc.token_expira_em && new Date(doc.token_expira_em) < new Date()) {
+      console.log(`❌ Token expirado: ${doc.token_expira_em}`);
       return res.status(400).json({ error: 'Link expirado. Entre em contato com o RH.' });
     }
+    
+    console.log(`✅ Enviando dados do candidato ${doc.candidato_nome}`);
     
     res.json({
       success: true,
