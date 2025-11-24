@@ -255,7 +255,10 @@ Dúvidas? Entre em contato com o RH.
 _FG Services - Recursos Humanos_
     `.trim();
     
-    const resultado = await enviarWhatsApp(dados.telefone, mensagem);
+    const resultado = await enviarWhatsApp({
+      numero: dados.telefone,
+      mensagem: mensagem,
+    });
     
     return resultado.sucesso;
   } catch (error) {

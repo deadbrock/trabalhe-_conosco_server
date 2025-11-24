@@ -7,7 +7,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import { validarQualidadeImagem, detectarRasuras } from '../services/imageValidationService';
 import { validarComprovanteResidencia } from '../services/ocrValidationService';
 import { enviarNotificacaoDocumentos } from '../services/notificacaoDocumentosService';
-import { authMiddleware } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -35,7 +35,7 @@ const upload = multer({
  * Gera link único para candidato aprovado enviar documentos
  * Requer autenticação (RH)
  */
-router.post('/gerar-link/:candidatoId', authMiddleware, async (req: Request, res: Response) => {
+router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { candidatoId } = req.params;
     const { enviarNotificacao = true } = req.body; // Opção de enviar ou não notificação
@@ -410,7 +410,7 @@ router.post('/:token/filhos', upload.fields([
  * GET /documentos/rh/listar
  * Lista todos os candidatos com documentos pendentes (RH)
  */
-router.get('/rh/listar', authMiddleware, async (req: Request, res: Response) => {
+router.get('/rh/listar', requireAuth, async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
       `SELECT 
@@ -439,7 +439,7 @@ router.get('/rh/listar', authMiddleware, async (req: Request, res: Response) => 
  * PUT /documentos/rh/:id/validar
  * Validar ou rejeitar um documento específico (RH)
  */
-router.put('/rh/:id/validar', authMiddleware, async (req: Request, res: Response) => {
+router.put('/rh/:id/validar', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { tipo_documento, acao, motivo_rejeicao } = req.body; // acao: "aprovar" ou "rejeitar"
