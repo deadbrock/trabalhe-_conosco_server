@@ -4,7 +4,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run copy-migrations",
+    "copy-migrations": "mkdir -p dist/migrations && cp -r src/migrations/*.sql dist/migrations/ || (if not exist dist\\migrations mkdir dist\\migrations && copy src\\migrations\\*.sql dist\\migrations\\)",
     "start": "node dist/index.js",
     "check-env": "ts-node src/check-env.ts",
     "migrate": "ts-node src/migrate.ts",
