@@ -142,27 +142,55 @@ candidatosRouter.put("/:id", async (req, res) => {
     
     // 🔔 Disparar gatilhos baseados no status
     if (status) {
-      switch (status) {
-        case 'Em análise':
+      console.log(`🔔 Status alterado para: "${status}" (candidato ${candidato.id})`);
+      
+      // Normalizar status para lowercase para comparação
+      const statusNormalizado = status.toLowerCase().trim();
+      
+      switch (statusNormalizado) {
+        case 'em análise':
+        case 'em_analise':
           notificarEmAnalise(candidato.id, candidato.vaga_id).catch(err => {
             console.error('❌ Erro ao disparar gatilho "Em análise":', err);
           });
           break;
-        case 'Pré-selecionado':
+          
+        case 'pré-selecionado':
+        case 'pre-selecionado':
+        case 'pre_selecionado':
           notificarPreSelecionado(candidato.id, candidato.vaga_id).catch(err => {
             console.error('❌ Erro ao disparar gatilho "Pré-selecionado":', err);
           });
           break;
-        case 'Aprovado':
+          
+        case 'entrevista':
+        case 'entrevista agendada':
+          // Nota: Este gatilho requer dados de agendamento, usar a rota específica de agendamentos
+          console.log('ℹ️ Status "Entrevista" - use o endpoint de agendamento para enviar convite');
+          break;
+          
+        case 'aprovado':
           notificarAprovado(candidato.id, candidato.vaga_id).catch(err => {
             console.error('❌ Erro ao disparar gatilho "Aprovado":', err);
           });
           break;
-        case 'Reprovado':
+          
+        case 'reprovado':
           notificarReprovado(candidato.id, candidato.vaga_id).catch(err => {
             console.error('❌ Erro ao disparar gatilho "Reprovado":', err);
           });
           break;
+          
+        case 'banco de talentos':
+        case 'banco_talentos':
+          // Disparar gatilho de banco de talentos
+          dispararGatilho('status_banco_talentos', candidato.id, candidato.vaga_id).catch(err => {
+            console.error('❌ Erro ao disparar gatilho "Banco de Talentos":', err);
+          });
+          break;
+          
+        default:
+          console.log(`ℹ️ Status "${status}" não possui gatilho automático configurado`);
       }
     }
     
