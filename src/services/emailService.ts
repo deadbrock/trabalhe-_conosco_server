@@ -61,8 +61,33 @@ export async function enviarEmail({
   } catch (error: any) {
     console.error('❌ Erro ao enviar email via SendGrid:', error);
     
+    // Log detalhado do erro SendGrid
+    if (error.response?.body?.errors) {
+      console.error('📋 Detalhes do erro SendGrid:', JSON.stringify(error.response.body.errors, null, 2));
+      
+      const errorDetails = error.response.body.errors[0];
+      console.error(`❌ Erro: ${errorDetails.message}`);
+      console.error(`❌ Campo: ${errorDetails.field}`);
+      console.error(`❌ Help: ${errorDetails.help}`);
+    }
+    
     // SendGrid retorna erros detalhados
     const errorMessage = error.response?.body?.errors?.[0]?.message || error.message || 'Erro desconhecido';
+    
+    // Sugestões baseadas no erro
+    if (error.code === 403) {
+      console.error('');
+      console.error('🔧 POSSÍVEIS CAUSAS DO ERRO 403:');
+      console.error('1. API Key inválida ou expirada');
+      console.error('2. Email remetente não verificado no SendGrid');
+      console.error('3. Conta SendGrid suspensa ou com pagamento pendente');
+      console.error('');
+      console.error('🔍 VERIFICAR:');
+      console.error(`   - API Key: ${process.env.SENDGRID_API_KEY?.substring(0, 10)}...`);
+      console.error(`   - Email remetente: ${remetenteEmail}`);
+      console.error('   - Verificar em: https://app.sendgrid.com/settings/sender_auth/senders');
+      console.error('');
+    }
     
     return {
       sucesso: false,
