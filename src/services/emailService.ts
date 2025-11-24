@@ -27,7 +27,7 @@ export async function enviarEmail({
   assunto,
   conteudo,
   remetenteNome = 'RH - FG Services',
-  remetenteEmail = 'rh@trabalheconoscofg.com.br'
+  remetenteEmail = process.env.SENDGRID_FROM_EMAIL || 'trabalheconoscofg@fgservices.com.br'
 }: EnviarEmailParams): Promise<ResultadoEnvio> {
   try {
     // Verificar se SendGrid está configurado
