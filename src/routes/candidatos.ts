@@ -3,7 +3,7 @@ import multer from "multer";
 import * as cloudinary from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { pool } from "../db";
-import { notificarInscricao, notificarEmAnalise, notificarPreSelecionado, notificarAprovado, notificarReprovado } from "../services/gatilhosService";
+import { notificarInscricao, notificarEmAnalise, notificarPreSelecionado, notificarAprovado, notificarReprovado, dispararGatilho } from "../services/gatilhosService";
 import { enviarParaFGS } from "../services/fgsService";
 
 // Configurar Cloudinary
