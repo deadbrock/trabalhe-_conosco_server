@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import { pool } from "./db";
 import { vagasRouter } from "./routes/vagas";
 import { candidatosRouter } from "./routes/candidatos";
 import { authRouter } from "./routes/auth";
@@ -146,10 +147,41 @@ app.use("/documentos", (req, res, next) => {
   requireAuth(req, res, next);
 }, documentosRouter);
 
+// Executar migração de documentos na inicialização (se necessário)
+async function executarMigracaoDocumentos() {
+  try {
+    const checkTable = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'documentos_candidatos'
+      );
+    `);
+    
+    if (!checkTable.rows[0].exists) {
+      console.log('📋 Tabela documentos_candidatos não existe. Criando...');
+      
+      const fs = await import('fs');
+      const path = await import('path');
+      const sqlPath = path.join(__dirname, 'migrations', 'create_documentos_candidatos.sql');
+      const sql = fs.readFileSync(sqlPath, 'utf-8');
+      
+      await pool.query(sql);
+      console.log('✅ Tabela documentos_candidatos criada com sucesso!');
+    } else {
+      console.log('✅ Tabela documentos_candidatos já existe');
+    }
+  } catch (error) {
+    console.error('⚠️ Erro ao verificar/criar tabela documentos_candidatos:', error);
+  }
+}
+
 const port = process.env.PORT || 3333;
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`🚀 API v1.3.2 listening on http://localhost:${port}`);
   console.log(`📱 WhatsApp Status disponível em: /whatsapp-status`);
   console.log(`🔗 Twilio WhatsApp API Configurado: ${!!process.env.TWILIO_ACCOUNT_SID}`);
   console.log(`🔐 Rotas LGPD disponíveis: /lgpd/solicitar, /lgpd/validar-codigo`);
+  
+  // Executar migração automaticamente
+  await executarMigracaoDocumentos();
 });
