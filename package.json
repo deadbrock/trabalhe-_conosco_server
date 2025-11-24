@@ -39,6 +39,8 @@
     "multer-storage-cloudinary": "^4.0.0",
     "pg": "^8.16.3",
     "resend": "^4.0.1",
+    "sharp": "^0.33.5",
+    "tesseract.js": "^5.1.1",
     "ts-node": "^10.9.2",
     "twilio": "^5.10.4",
     "typescript": "^5.9.2"

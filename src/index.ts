@@ -21,6 +21,7 @@ import comunicacaoRouter from "./routes/comunicacao";
 import gatilhosRouter from "./routes/gatilhos";
 import whatsappRouter from "./routes/whatsapp";
 import lgpdRouter from "./routes/lgpd";
+import documentosRouter from "./routes/documentos";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -129,6 +130,21 @@ app.use("/lgpd", (req, res, next) => {
   // Demais rotas protegidas (RH apenas)
   requireAuth(req, res, next);
 }, lgpdRouter);
+
+// Rotas Documentos: GET /:token e POST /:token/upload públicas (via token único), /rh/* protegidas
+app.use("/documentos", (req, res, next) => {
+  // Rotas públicas para candidatos (via token)
+  const isPublicRoute = 
+    (req.method === "GET" && req.path.match(/^\/[a-f0-9]{64}$/)) || // GET /documentos/:token
+    (req.method === "POST" && req.path.match(/^\/[a-f0-9]{64}\/(upload|filhos)$/)); // POST /documentos/:token/upload
+  
+  if (isPublicRoute) {
+    return next();
+  }
+  
+  // Demais rotas protegidas (RH apenas)
+  requireAuth(req, res, next);
+}, documentosRouter);
 
 const port = process.env.PORT || 3333;
 app.listen(port, () => {
