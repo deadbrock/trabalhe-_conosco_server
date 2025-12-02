@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
     "build": "tsc -p tsconfig.json && npm run copy-migrations",
-    "copy-migrations": "if not exist dist\\migrations mkdir dist\\migrations && copy src\\migrations\\*.sql dist\\migrations\\",
+    "copy-migrations": "node -e \"const fs = require('fs'); const path = require('path'); const src = 'src/migrations'; const dest = 'dist/migrations'; if (!fs.existsSync(dest)) fs.mkdirSync(dest, {recursive: true}); fs.readdirSync(src).filter(f => f.endsWith('.sql')).forEach(f => fs.copyFileSync(path.join(src, f), path.join(dest, f)));\"",
     "start": "node dist/index.js",
     "check-env": "ts-node src/check-env.ts",
     "migrate": "ts-node src/migrate.ts",
