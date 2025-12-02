@@ -177,9 +177,31 @@ export async function enviarEmailDocumentos(dados: DadosNotificacao): Promise<bo
               </p>
             </div>
             
+            <div style="background: #e3f2fd; border: 2px solid #2196f3; border-radius: 12px; padding: 25px; margin: 30px 0;">
+              <h3 style="margin-top: 0; color: #1976d2; font-size: 20px; text-align: center;">
+                🔐 Suas Credenciais de Acesso
+              </h3>
+              
+              <div style="background: white; border-radius: 8px; padding: 20px; margin: 15px 0;">
+                <p style="margin: 10px 0; font-size: 16px;">
+                  <strong style="color: #1976d2;">CPF:</strong><br>
+                  <span style="font-size: 24px; font-weight: bold; color: #333; letter-spacing: 2px;">${dados.cpf}</span>
+                </p>
+                
+                <p style="margin: 10px 0; font-size: 16px;">
+                  <strong style="color: #1976d2;">Senha:</strong><br>
+                  <span style="font-size: 24px; font-weight: bold; color: #333; letter-spacing: 3px; font-family: monospace;">${dados.senha}</span>
+                </p>
+              </div>
+              
+              <p style="margin: 15px 0 0 0; font-size: 13px; color: #555; text-align: center;">
+                ⚠️ Guarde essas credenciais em local seguro
+              </p>
+            </div>
+            
             <div style="text-align: center;">
               <a href="${dados.linkDocumentos}" class="btn">
-                📤 Enviar Documentos Agora
+                📤 Acessar Sistema de Documentos
               </a>
             </div>
             
@@ -189,7 +211,7 @@ export async function enviarEmailDocumentos(dados: DadosNotificacao): Promise<bo
             </p>
             
             <p style="margin-top: 20px; font-size: 13px; color: #999;">
-              Este link é exclusivo para você e válido por 30 dias. 
+              Suas credenciais são válidas por 30 dias. 
               Caso tenha dúvidas, entre em contato com o RH.
             </p>
           </div>
@@ -234,9 +256,13 @@ Você foi aprovado${dados.vagaTitulo ? ` para a vaga de *${dados.vagaTitulo}*` :
 
 📄 *Próxima Etapa: Envio de Documentos*
 
-Para prosseguir com a admissão, acesse o link abaixo e envie seus documentos:
+🔐 *Suas Credenciais de Acesso:*
 
-🔗 ${dados.linkDocumentos}
+*CPF:* ${dados.cpf}
+*Senha:* ${dados.senha}
+
+🔗 *Link de Acesso:*
+${dados.linkDocumentos}
 
 ⚠️ *Atenção:*
 • Fotos devem estar nítidas e legíveis
@@ -251,6 +277,10 @@ Para prosseguir com a admissão, acesse o link abaixo e envie seus documentos:
 ✓ Reservista (se masculino)
 ✓ Título de Eleitor
 ✓ Antecedentes Criminais
+
+⚠️ Guarde suas credenciais em local seguro!
+
+Credenciais válidas por 30 dias.
 
 Dúvidas? Entre em contato com o RH.
 
