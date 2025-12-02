@@ -11,6 +11,18 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
+/**
+ * Gera senha aleatória de 7 caracteres (letras e números)
+ */
+function gerarSenhaAleatoria(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sem caracteres confusos (I, O, 0, 1)
+  let senha = '';
+  for (let i = 0; i < 7; i++) {
+    senha += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return senha;
+}
+
 // Configurar Cloudinary Storage para documentos
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -31,16 +43,75 @@ const upload = multer({
 });
 
 /**
- * POST /documentos/gerar-link/:candidatoId
- * Gera link único para candidato aprovado enviar documentos
+ * POST /documentos/login
+ * Autentica candidato com CPF + Senha
+ * Público (sem autenticação)
+ */
+router.post('/login', async (req: Request, res: Response) => {
+  try {
+    const { cpf, senha } = req.body;
+    
+    console.log(`🔐 Tentativa de login - CPF: ${cpf}`);
+    
+    if (!cpf || !senha) {
+      return res.status(400).json({ error: 'CPF e senha são obrigatórios' });
+    }
+    
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    
+    // Buscar credenciais
+    const credResult = await pool.query(
+      `SELECT ct.id, ct.candidato_id, ct.senha, ct.expira_em, c.nome, c.email
+       FROM credenciais_temporarias ct
+       JOIN candidatos c ON ct.candidato_id = c.id
+       WHERE ct.cpf = $1 AND ct.ativo = true AND ct.expira_em > NOW()`,
+      [cpfLimpo]
+    );
+    
+    if (credResult.rows.length === 0) {
+      console.log(`❌ CPF não encontrado ou credenciais expiradas`);
+      return res.status(401).json({ error: 'CPF ou senha inválidos' });
+    }
+    
+    const credencial = credResult.rows[0];
+    
+    // Verificar senha
+    if (credencial.senha !== senha.trim()) {
+      console.log(`❌ Senha incorreta`);
+      return res.status(401).json({ error: 'CPF ou senha inválidos' });
+    }
+    
+    console.log(`✅ Login bem-sucedido - Candidato: ${credencial.nome}`);
+    
+    // Gerar token JWT para a sessão
+    const token = crypto.randomBytes(32).toString('hex');
+    
+    res.json({
+      success: true,
+      token,
+      candidato: {
+        id: credencial.candidato_id,
+        nome: credencial.nome,
+        email: credencial.email,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Erro no login:', error);
+    res.status(500).json({ error: 'Erro ao fazer login' });
+  }
+});
+
+/**
+ * POST /documentos/gerar-credenciais/:candidatoId
+ * Gera CPF + Senha para candidato aprovado enviar documentos
  * Requer autenticação (RH)
  */
-router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: Response) => {
+router.post('/gerar-credenciais/:candidatoId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { candidatoId } = req.params;
-    const { enviarNotificacao = true } = req.body; // Opção de enviar ou não notificação
+    const { enviarNotificacao = true } = req.body;
     
-    console.log(`📋 Gerando link de documentos para candidato ID: ${candidatoId}`);
+    console.log(`📋 Gerando credenciais de documentos para candidato ID: ${candidatoId}`);
     
     // Verificar se candidato existe e está aprovado
     const candidatoResult = await pool.query(
@@ -65,35 +136,73 @@ router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: R
       return res.status(400).json({ error: 'Apenas candidatos aprovados podem receber link de documentos' });
     }
     
-    // Verificar se já existe registro de documentos
-    const docExistenteResult = await pool.query(
-      `SELECT id, token_acesso FROM documentos_candidatos WHERE candidato_id = $1`,
+    // Buscar CPF do candidato
+    const cpfResult = await pool.query(
+      `SELECT cpf FROM candidatos WHERE id = $1`,
       [candidatoId]
     );
     
-    let tokenAcesso: string;
+    if (!cpfResult.rows[0]?.cpf) {
+      console.log(`❌ CPF não encontrado para candidato ${candidatoId}`);
+      return res.status(400).json({ error: 'CPF do candidato não encontrado' });
+    }
+    
+    const cpf = cpfResult.rows[0].cpf.replace(/\D/g, ''); // Remove formatação
+    
+    // Verificar se já existem credenciais ativas
+    const credExistenteResult = await pool.query(
+      `SELECT id, senha FROM credenciais_temporarias 
+       WHERE candidato_id = $1 AND ativo = true AND expira_em > NOW()`,
+      [candidatoId]
+    );
+    
+    let senha: string;
     let novoRegistro = false;
     
-    if (docExistenteResult.rows.length > 0) {
-      // Usar token existente
-      tokenAcesso = docExistenteResult.rows[0].token_acesso;
+    if (credExistenteResult.rows.length > 0) {
+      // Usar senha existente
+      senha = credExistenteResult.rows[0].senha;
+      console.log(`🔄 Usando credenciais existentes`);
     } else {
-      // Gerar novo token único
-      tokenAcesso = crypto.randomBytes(32).toString('hex');
+      // Gerar nova senha
+      senha = gerarSenhaAleatoria();
       novoRegistro = true;
       
-      // Criar registro na tabela documentos_candidatos
+      // Desativar credenciais antigas (se houver)
+      await pool.query(
+        `UPDATE credenciais_temporarias SET ativo = false WHERE candidato_id = $1`,
+        [candidatoId]
+      );
+      
+      // Criar novas credenciais
+      await pool.query(
+        `INSERT INTO credenciais_temporarias (candidato_id, cpf, senha, expira_em)
+         VALUES ($1, $2, $3, NOW() + INTERVAL '30 days')`,
+        [candidatoId, cpf, senha]
+      );
+      
+      console.log(`✅ Novas credenciais geradas`);
+    }
+    
+    // Criar/atualizar registro na tabela documentos_candidatos (se não existir)
+    const docExistenteResult = await pool.query(
+      `SELECT id FROM documentos_candidatos WHERE candidato_id = $1`,
+      [candidatoId]
+    );
+    
+    if (docExistenteResult.rows.length === 0) {
       await pool.query(
         `INSERT INTO documentos_candidatos (candidato_id, token_acesso, token_expira_em)
          VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
-        [candidatoId, tokenAcesso]
+        [candidatoId, cpf, cpf] // Usar CPF como placeholder
       );
     }
     
-    // Construir link
-    const linkDocumentos = `${process.env.FRONTEND_URL}/documentos/${tokenAcesso}`;
+    const linkDocumentos = `${process.env.FRONTEND_URL}/documentos`;
     
-    console.log(`🔗 Link gerado: ${linkDocumentos}`);
+    console.log(`🔗 Link de acesso: ${linkDocumentos}`);
+    console.log(`👤 CPF: ${cpf}`);
+    console.log(`🔑 Senha: ${senha}`);
     console.log(`📧 Enviar notificação: ${enviarNotificacao}`);
     
     // Enviar notificação por email/WhatsApp
@@ -106,17 +215,20 @@ router.post('/gerar-link/:candidatoId', requireAuth, async (req: Request, res: R
         email: candidato.email,
         telefone: candidato.telefone,
         linkDocumentos,
+        cpf,
+        senha,
         vagaTitulo: candidato.vaga_titulo,
       });
       console.log(`📊 Resultado notificação:`, notificacaoResult);
     }
     
-    console.log(`✅ Link criado com sucesso! Token: ${tokenAcesso}`);
+    console.log(`✅ Credenciais criadas com sucesso! CPF: ${cpf} | Senha: ${senha}`);
     
     res.json({
       success: true,
       link: linkDocumentos,
-      token: tokenAcesso,
+      cpf,
+      senha,
       novoRegistro,
       candidato: {
         id: candidato.id,
