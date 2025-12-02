@@ -59,21 +59,42 @@ router.post('/login', async (req: Request, res: Response) => {
     
     const cpfLimpo = cpf.replace(/\D/g, '');
     
+    console.log(`🔍 CPF limpo: ${cpfLimpo}`);
+    console.log(`🔍 Senha recebida: ${senha}`);
+    
     // Buscar credenciais
     const credResult = await pool.query(
-      `SELECT ct.id, ct.candidato_id, ct.senha, ct.expira_em, c.nome, c.email
+      `SELECT ct.id, ct.candidato_id, ct.senha, ct.expira_em, ct.ativo, c.nome, c.email
        FROM credenciais_temporarias ct
        JOIN candidatos c ON ct.candidato_id = c.id
-       WHERE ct.cpf = $1 AND ct.ativo = true AND ct.expira_em > NOW()`,
+       WHERE ct.cpf = $1`,
       [cpfLimpo]
     );
     
+    console.log(`📊 Credenciais encontradas: ${credResult.rows.length}`);
+    
+    if (credResult.rows.length > 0) {
+      const cred = credResult.rows[0];
+      console.log(`📋 Credencial encontrada:`);
+      console.log(`  - Ativo: ${cred.ativo}`);
+      console.log(`  - Expira em: ${cred.expira_em}`);
+      console.log(`  - Senha armazenada: ${cred.senha}`);
+      console.log(`  - Senha recebida: ${senha.trim()}`);
+      console.log(`  - Senhas iguais: ${cred.senha === senha.trim()}`);
+    }
+    
     if (credResult.rows.length === 0) {
-      console.log(`❌ CPF não encontrado ou credenciais expiradas`);
+      console.log(`❌ CPF não encontrado`);
       return res.status(401).json({ error: 'CPF ou senha inválidos' });
     }
     
     const credencial = credResult.rows[0];
+    
+    // Verificar se está ativo e não expirou
+    if (!credencial.ativo || new Date(credencial.expira_em) < new Date()) {
+      console.log(`❌ Credenciais inativas ou expiradas`);
+      return res.status(401).json({ error: 'CPF ou senha inválidos' });
+    }
     
     // Verificar senha
     if (credencial.senha !== senha.trim()) {
