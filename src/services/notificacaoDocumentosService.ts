@@ -9,7 +9,9 @@ interface DadosNotificacao {
   nome: string;
   email: string;
   telefone?: string;
-  linkDocumentos: string;
+  linkDocumentos?: string; // Opcional agora
+  cpf?: string; // Novo
+  senha?: string; // Novo
   vagaTitulo?: string;
 }
 
