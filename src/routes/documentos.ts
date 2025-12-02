@@ -147,6 +147,7 @@ router.get('/dados', async (req: Request, res: Response) => {
       `SELECT 
         c.id, c.nome, c.email, c.telefone, c.cpf,
         v.titulo as vaga_titulo,
+        dc.foto_3x4_url, dc.foto_3x4_validado, dc.foto_3x4_rejeitado, dc.foto_3x4_motivo_rejeicao,
         dc.ctps_digital_url, dc.ctps_digital_validado, dc.ctps_digital_rejeitado, dc.ctps_digital_motivo_rejeicao,
         dc.identidade_frente_url, dc.identidade_frente_validado, dc.identidade_frente_rejeitado, dc.identidade_frente_motivo_rejeicao,
         dc.identidade_verso_url, dc.identidade_verso_validado, dc.identidade_verso_rejeitado, dc.identidade_verso_motivo_rejeicao,
@@ -155,6 +156,8 @@ router.get('/dados', async (req: Request, res: Response) => {
         dc.reservista_url, dc.reservista_validado, dc.reservista_rejeitado, dc.reservista_motivo_rejeicao,
         dc.titulo_eleitor_url, dc.titulo_eleitor_validado, dc.titulo_eleitor_rejeitado, dc.titulo_eleitor_motivo_rejeicao,
         dc.antecedentes_criminais_url, dc.antecedentes_criminais_validado, dc.antecedentes_criminais_rejeitado, dc.antecedentes_criminais_motivo_rejeicao,
+        dc.certidao_nascimento_dependente_url, dc.certidao_nascimento_dependente_validado, dc.certidao_nascimento_dependente_rejeitado, dc.certidao_nascimento_dependente_motivo_rejeicao,
+        dc.cpf_dependente_url, dc.cpf_dependente_validado, dc.cpf_dependente_rejeitado, dc.cpf_dependente_motivo_rejeicao,
         dc.status
        FROM candidatos c
        LEFT JOIN vagas v ON c.vaga_id = v.id
@@ -180,6 +183,12 @@ router.get('/dados', async (req: Request, res: Response) => {
         vaga: candidato.vaga_titulo || 'Não especificada',
       },
       documentos: {
+        foto_3x4: {
+          url: candidato.foto_3x4_url,
+          validado: candidato.foto_3x4_validado || false,
+          rejeitado: candidato.foto_3x4_rejeitado || false,
+          motivo_rejeicao: candidato.foto_3x4_motivo_rejeicao,
+        },
         ctps_digital: {
           url: candidato.ctps_digital_url,
           validado: candidato.ctps_digital_validado || false,
@@ -227,6 +236,18 @@ router.get('/dados', async (req: Request, res: Response) => {
           validado: candidato.antecedentes_criminais_validado || false,
           rejeitado: candidato.antecedentes_criminais_rejeitado || false,
           motivo_rejeicao: candidato.antecedentes_criminais_motivo_rejeicao,
+        },
+        certidao_nascimento_dependente: {
+          url: candidato.certidao_nascimento_dependente_url,
+          validado: candidato.certidao_nascimento_dependente_validado || false,
+          rejeitado: candidato.certidao_nascimento_dependente_rejeitado || false,
+          motivo_rejeicao: candidato.certidao_nascimento_dependente_motivo_rejeicao,
+        },
+        cpf_dependente: {
+          url: candidato.cpf_dependente_url,
+          validado: candidato.cpf_dependente_validado || false,
+          rejeitado: candidato.cpf_dependente_rejeitado || false,
+          motivo_rejeicao: candidato.cpf_dependente_motivo_rejeicao,
         },
       },
       status: candidato.status || 'pendente',
