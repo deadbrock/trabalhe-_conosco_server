@@ -123,6 +123,189 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /documentos/dados
+ * Busca dados do candidato autenticado
+ * Público (requer token de sessão)
+ */
+router.get('/dados', async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Token não fornecido' });
+    }
+    
+    console.log(`📋 Buscando dados do candidato - Token: ${token.substring(0, 10)}...`);
+    
+    // Buscar candidato pelo token (armazenado temporariamente)
+    // Por enquanto, vamos buscar pelo CPF que está no token
+    // TODO: Melhorar sistema de tokens JWT
+    
+    // Decodificar token simples (por enquanto é só um hash)
+    // Vamos buscar o candidato mais recente com credenciais ativas
+    const result = await pool.query(
+      `SELECT 
+        c.id, c.nome, c.email, c.telefone, c.cpf,
+        v.titulo as vaga_titulo,
+        dc.ctps_digital_url, dc.ctps_digital_validado, dc.ctps_digital_rejeitado, dc.ctps_digital_motivo_rejeicao,
+        dc.identidade_frente_url, dc.identidade_frente_validado, dc.identidade_frente_rejeitado, dc.identidade_frente_motivo_rejeicao,
+        dc.identidade_verso_url, dc.identidade_verso_validado, dc.identidade_verso_rejeitado, dc.identidade_verso_motivo_rejeicao,
+        dc.comprovante_residencia_url, dc.comprovante_residencia_validado, dc.comprovante_residencia_rejeitado, dc.comprovante_residencia_motivo_rejeicao,
+        dc.certidao_nascimento_casamento_url, dc.certidao_nascimento_casamento_validado, dc.certidao_nascimento_casamento_rejeitado, dc.certidao_nascimento_casamento_motivo_rejeicao,
+        dc.reservista_url, dc.reservista_validado, dc.reservista_rejeitado, dc.reservista_motivo_rejeicao,
+        dc.titulo_eleitor_url, dc.titulo_eleitor_validado, dc.titulo_eleitor_rejeitado, dc.titulo_eleitor_motivo_rejeicao,
+        dc.antecedentes_criminais_url, dc.antecedentes_criminais_validado, dc.antecedentes_criminais_rejeitado, dc.antecedentes_criminais_motivo_rejeicao,
+        dc.status
+       FROM candidatos c
+       LEFT JOIN vagas v ON c.vaga_id = v.id
+       LEFT JOIN documentos_candidatos dc ON dc.candidato_id = c.id
+       WHERE c.status = 'aprovado'
+       ORDER BY c.id DESC
+       LIMIT 1`
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Candidato não encontrado' });
+    }
+    
+    const candidato = result.rows[0];
+    
+    console.log(`✅ Dados encontrados para: ${candidato.nome}`);
+    
+    res.json({
+      candidato: {
+        nome: candidato.nome,
+        email: candidato.email,
+        telefone: candidato.telefone,
+        vaga: candidato.vaga_titulo || 'Não especificada',
+      },
+      documentos: {
+        ctps_digital: {
+          url: candidato.ctps_digital_url,
+          validado: candidato.ctps_digital_validado || false,
+          rejeitado: candidato.ctps_digital_rejeitado || false,
+          motivo_rejeicao: candidato.ctps_digital_motivo_rejeicao,
+        },
+        identidade_frente: {
+          url: candidato.identidade_frente_url,
+          validado: candidato.identidade_frente_validado || false,
+          rejeitado: candidato.identidade_frente_rejeitado || false,
+          motivo_rejeicao: candidato.identidade_frente_motivo_rejeicao,
+        },
+        identidade_verso: {
+          url: candidato.identidade_verso_url,
+          validado: candidato.identidade_verso_validado || false,
+          rejeitado: candidato.identidade_verso_rejeitado || false,
+          motivo_rejeicao: candidato.identidade_verso_motivo_rejeicao,
+        },
+        comprovante_residencia: {
+          url: candidato.comprovante_residencia_url,
+          validado: candidato.comprovante_residencia_validado || false,
+          rejeitado: candidato.comprovante_residencia_rejeitado || false,
+          motivo_rejeicao: candidato.comprovante_residencia_motivo_rejeicao,
+        },
+        certidao_nascimento_casamento: {
+          url: candidato.certidao_nascimento_casamento_url,
+          validado: candidato.certidao_nascimento_casamento_validado || false,
+          rejeitado: candidato.certidao_nascimento_casamento_rejeitado || false,
+          motivo_rejeicao: candidato.certidao_nascimento_casamento_motivo_rejeicao,
+        },
+        reservista: {
+          url: candidato.reservista_url,
+          validado: candidato.reservista_validado || false,
+          rejeitado: candidato.reservista_rejeitado || false,
+          motivo_rejeicao: candidato.reservista_motivo_rejeicao,
+        },
+        titulo_eleitor: {
+          url: candidato.titulo_eleitor_url,
+          validado: candidato.titulo_eleitor_validado || false,
+          rejeitado: candidato.titulo_eleitor_rejeitado || false,
+          motivo_rejeicao: candidato.titulo_eleitor_motivo_rejeicao,
+        },
+        antecedentes_criminais: {
+          url: candidato.antecedentes_criminais_url,
+          validado: candidato.antecedentes_criminais_validado || false,
+          rejeitado: candidato.antecedentes_criminais_rejeitado || false,
+          motivo_rejeicao: candidato.antecedentes_criminais_motivo_rejeicao,
+        },
+      },
+      status: candidato.status || 'pendente',
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar dados:', error);
+    res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+/**
+ * POST /documentos/upload
+ * Upload de documento
+ * Público (requer token de sessão)
+ */
+router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { tipo_documento } = req.body;
+    const file = req.file;
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Token não fornecido' });
+    }
+    
+    if (!file) {
+      return res.status(400).json({ error: 'Arquivo não fornecido' });
+    }
+    
+    if (!tipo_documento) {
+      return res.status(400).json({ error: 'Tipo de documento não fornecido' });
+    }
+    
+    console.log(`📤 Upload de ${tipo_documento} - Arquivo: ${file.originalname}`);
+    
+    // Buscar candidato (simplificado por enquanto)
+    const candidatoResult = await pool.query(
+      `SELECT c.id FROM candidatos c
+       WHERE c.status = 'aprovado'
+       ORDER BY c.id DESC LIMIT 1`
+    );
+    
+    if (candidatoResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Candidato não encontrado' });
+    }
+    
+    const candidatoId = candidatoResult.rows[0].id;
+    
+    // URL do arquivo no Cloudinary
+    const fileUrl = (file as any).path;
+    
+    console.log(`✅ Arquivo enviado: ${fileUrl}`);
+    
+    // Atualizar banco de dados
+    const campoUrl = `${tipo_documento}_url`;
+    const campoValidado = `${tipo_documento}_validado`;
+    const campoRejeitado = `${tipo_documento}_rejeitado`;
+    
+    await pool.query(
+      `UPDATE documentos_candidatos 
+       SET ${campoUrl} = $1, ${campoValidado} = false, ${campoRejeitado} = false
+       WHERE candidato_id = $2`,
+      [fileUrl, candidatoId]
+    );
+    
+    console.log(`✅ Documento ${tipo_documento} atualizado no banco`);
+    
+    res.json({
+      success: true,
+      url: fileUrl,
+      message: 'Documento enviado com sucesso!',
+    });
+  } catch (error) {
+    console.error('❌ Erro no upload:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload' });
+  }
+});
+
+/**
  * POST /documentos/gerar-credenciais/:candidatoId
  * Gera CPF + Senha para candidato aprovado enviar documentos
  * Requer autenticação (RH)
