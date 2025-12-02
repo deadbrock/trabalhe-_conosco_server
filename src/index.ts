@@ -132,12 +132,15 @@ app.use("/lgpd", (req, res, next) => {
   requireAuth(req, res, next);
 }, lgpdRouter);
 
-// Rotas Documentos: GET /:token e POST /:token/upload públicas (via token único), /rh/* protegidas
+// Rotas Documentos: /login e /upload públicas, /gerar-credenciais protegida
 app.use("/documentos", (req, res, next) => {
-  // Rotas públicas para candidatos (via token)
+  // Rotas públicas para candidatos
   const isPublicRoute = 
-    (req.method === "GET" && req.path.match(/^\/[a-f0-9]{64}$/)) || // GET /documentos/:token
-    (req.method === "POST" && req.path.match(/^\/[a-f0-9]{64}\/(upload|filhos)$/)); // POST /documentos/:token/upload
+    (req.method === "POST" && req.path === "/login") || // POST /documentos/login
+    (req.method === "GET" && req.path === "/upload") || // GET /documentos/upload (página)
+    (req.method === "POST" && req.path === "/upload") || // POST /documentos/upload (envio)
+    (req.method === "GET" && req.path.match(/^\/[a-f0-9]{64}$/)) || // GET /documentos/:token (legado)
+    (req.method === "POST" && req.path.match(/^\/[a-f0-9]{64}\/(upload|filhos)$/)); // POST /documentos/:token/upload (legado)
   
   if (isPublicRoute) {
     return next();
