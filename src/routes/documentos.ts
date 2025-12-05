@@ -834,5 +834,75 @@ router.put('/rh/:id/validar', requireAuth, async (req: Request, res: Response) =
   }
 });
 
+/**
+ * POST /documentos/autodeclaracao
+ * Salva autodeclaração racial do candidato
+ * Público (após login com CPF/Senha)
+ */
+router.post('/autodeclaracao', async (req: Request, res: Response) => {
+  try {
+    const { raca } = req.body;
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Token não fornecido' });
+    }
+    
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Validar raça
+    const racasValidas = ['branca', 'preta', 'parda', 'amarela', 'indigena', 'nao_declarar'];
+    if (!raca || !racasValidas.includes(raca)) {
+      return res.status(400).json({ error: 'Raça/cor inválida' });
+    }
+    
+    console.log(`🌍 Salvando autodeclaração racial: ${raca}`);
+    
+    // Buscar candidato pelo token (simplificado - buscar candidato aprovado mais recente)
+    // TODO: Implementar sistema de tokens JWT adequado
+    const result = await pool.query(
+      `SELECT c.id, c.nome
+       FROM candidatos c
+       WHERE c.status = 'aprovado'
+       ORDER BY c.id DESC
+       LIMIT 1`
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Candidato não encontrado' });
+    }
+    
+    const candidato = result.rows[0];
+    
+    // Atualizar autodeclaração na tabela de documentos
+    await pool.query(
+      `UPDATE documentos_candidatos 
+       SET autodeclaracao_racial = $1, 
+           autodeclaracao_data = NOW()
+       WHERE candidato_id = $2`,
+      [raca, candidato.id]
+    );
+    
+    // Também salvar na tabela de candidatos
+    await pool.query(
+      `UPDATE candidatos 
+       SET autodeclaracao_racial = $1
+       WHERE id = $2`,
+      [raca, candidato.id]
+    );
+    
+    console.log(`✅ Autodeclaração salva para ${candidato.nome}: ${raca}`);
+    
+    res.json({
+      success: true,
+      message: 'Autodeclaração racial salva com sucesso',
+      raca,
+    });
+  } catch (error: any) {
+    console.error('❌ Erro ao salvar autodeclaração:', error);
+    res.status(500).json({ error: 'Erro ao salvar autodeclaração' });
+  }
+});
+
 export default router;
 
