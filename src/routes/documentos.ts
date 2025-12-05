@@ -258,6 +258,194 @@ router.get('/dados', async (req: Request, res: Response) => {
   }
 });
 
+// Documentos obrigatórios para verificação de completude
+const DOCUMENTOS_OBRIGATORIOS = [
+  'foto_3x4',
+  'ctps_digital',
+  'identidade_frente',
+  'identidade_verso',
+  'comprovante_residencia',
+  'certidao_nascimento_casamento',
+  'titulo_eleitor',
+  'antecedentes_criminais',
+];
+
+// Função para verificar se todos os documentos obrigatórios foram enviados
+async function verificarCompletude(candidatoId: number): Promise<{
+  completo: boolean;
+  documentosEnviados: string[];
+  documentosFaltantes: string[];
+  autodeclaracaoPreenchida: boolean;
+}> {
+  const result = await pool.query(
+    `SELECT 
+      foto_3x4_url, ctps_digital_url, identidade_frente_url, identidade_verso_url,
+      comprovante_residencia_url, certidao_nascimento_casamento_url,
+      titulo_eleitor_url, antecedentes_criminais_url, autodeclaracao_racial
+     FROM documentos_candidatos 
+     WHERE candidato_id = $1`,
+    [candidatoId]
+  );
+  
+  if (result.rows.length === 0) {
+    return {
+      completo: false,
+      documentosEnviados: [],
+      documentosFaltantes: DOCUMENTOS_OBRIGATORIOS,
+      autodeclaracaoPreenchida: false,
+    };
+  }
+  
+  const doc = result.rows[0];
+  const documentosEnviados: string[] = [];
+  const documentosFaltantes: string[] = [];
+  
+  DOCUMENTOS_OBRIGATORIOS.forEach(campo => {
+    const campoUrl = `${campo}_url`;
+    if (doc[campoUrl]) {
+      documentosEnviados.push(campo);
+    } else {
+      documentosFaltantes.push(campo);
+    }
+  });
+  
+  const autodeclaracaoPreenchida = !!doc.autodeclaracao_racial;
+  const completo = documentosFaltantes.length === 0 && autodeclaracaoPreenchida;
+  
+  return { completo, documentosEnviados, documentosFaltantes, autodeclaracaoPreenchida };
+}
+
+// Função para notificar RH sobre documentos completos
+async function notificarRHDocumentosCompletos(candidatoId: number): Promise<void> {
+  try {
+    // Buscar dados do candidato
+    const candidatoResult = await pool.query(
+      `SELECT c.nome, c.email, c.telefone, v.titulo as vaga
+       FROM candidatos c
+       LEFT JOIN vagas v ON c.vaga_id = v.id
+       WHERE c.id = $1`,
+      [candidatoId]
+    );
+    
+    if (candidatoResult.rows.length === 0) return;
+    
+    const candidato = candidatoResult.rows[0];
+    
+    // Buscar emails do RH
+    const rhResult = await pool.query(
+      `SELECT email FROM usuarios WHERE role = 'admin' OR role = 'rh'`
+    );
+    
+    // Importar serviço de email
+    const { enviarEmail } = require('../services/emailService');
+    
+    const htmlEmail = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #0f4c81 0%, #1e88e5 100%); padding: 30px; border-radius: 15px 15px 0 0; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">📋 Documentos Recebidos</h1>
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 15px 15px;">
+          <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <h2 style="color: #0f4c81; margin-top: 0;">Candidato enviou todos os documentos!</h2>
+            
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #eee;"><strong>Nome:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #eee;">${candidato.nome}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #eee;"><strong>Email:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #eee;">${candidato.email}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #eee;"><strong>Telefone:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #eee;">${candidato.telefone || 'Não informado'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0;"><strong>Vaga:</strong></td>
+                <td style="padding: 10px 0;">${candidato.vaga || 'Não especificada'}</td>
+              </tr>
+            </table>
+          </div>
+          
+          <div style="text-align: center;">
+            <a href="https://www.trabalheconoscofg.com.br/rh/candidatos" 
+               style="display: inline-block; background: linear-gradient(135deg, #0f4c81 0%, #1e88e5 100%); 
+                      color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; 
+                      font-weight: bold;">
+              Acessar Painel RH
+            </a>
+          </div>
+          
+          <p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">
+            Este é um email automático do sistema Trabalhe Conosco - FG Services
+          </p>
+        </div>
+      </div>
+    `;
+    
+    // Enviar para todos os usuários RH
+    for (const rh of rhResult.rows) {
+      await enviarEmail({
+        destinatario: rh.email,
+        assunto: `📋 Documentos Completos - ${candidato.nome}`,
+        conteudo: htmlEmail,
+      });
+      console.log(`📧 Notificação enviada para RH: ${rh.email}`);
+    }
+    
+    // Também enviar email de confirmação para o candidato
+    const htmlConfirmacao = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px; border-radius: 15px 15px 0 0; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">✅ Documentos Recebidos!</h1>
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 15px 15px;">
+          <div style="background: white; padding: 20px; border-radius: 10px;">
+            <h2 style="color: #28a745; margin-top: 0;">Olá, ${candidato.nome}!</h2>
+            
+            <p style="color: #333; line-height: 1.6;">
+              Recebemos todos os seus documentos com sucesso! 🎉
+            </p>
+            
+            <p style="color: #333; line-height: 1.6;">
+              Nossa equipe de RH irá analisar sua documentação e entraremos em contato 
+              em breve com os próximos passos do processo de admissão.
+            </p>
+            
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p style="color: #2e7d32; margin: 0; font-weight: bold;">
+                📋 Status: Documentos enviados - Aguardando análise
+              </p>
+            </div>
+            
+            <p style="color: #666; font-size: 14px;">
+              Caso tenha alguma dúvida, entre em contato conosco pelo email 
+              <a href="mailto:rh@fgservices.com.br">rh@fgservices.com.br</a>
+            </p>
+          </div>
+          
+          <p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">
+            FG Services - Trabalhe Conosco
+          </p>
+        </div>
+      </div>
+    `;
+    
+    await enviarEmail({
+      destinatario: candidato.email,
+      assunto: '✅ Seus documentos foram recebidos - FG Services',
+      conteudo: htmlConfirmacao,
+    });
+    console.log(`📧 Confirmação enviada para candidato: ${candidato.email}`);
+    
+  } catch (error) {
+    console.error('❌ Erro ao notificar RH:', error);
+  }
+}
+
 /**
  * POST /documentos/upload
  * Upload de documento
@@ -308,17 +496,49 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     
     await pool.query(
       `UPDATE documentos_candidatos 
-       SET ${campoUrl} = $1, ${campoValidado} = false, ${campoRejeitado} = false
+       SET ${campoUrl} = $1, ${campoValidado} = false, ${campoRejeitado} = false,
+           data_ultimo_upload = NOW()
        WHERE candidato_id = $2`,
       [fileUrl, candidatoId]
     );
     
     console.log(`✅ Documento ${tipo_documento} atualizado no banco`);
     
+    // Verificar se todos os documentos foram enviados
+    const completude = await verificarCompletude(candidatoId);
+    console.log(`📊 Completude: ${completude.documentosEnviados.length}/${DOCUMENTOS_OBRIGATORIOS.length} documentos | Autodeclaração: ${completude.autodeclaracaoPreenchida}`);
+    
+    if (completude.completo) {
+      console.log(`🎉 Candidato ${candidatoId} completou todos os documentos!`);
+      
+      // Atualizar status para "documentos_enviados"
+      await pool.query(
+        `UPDATE documentos_candidatos 
+         SET status = 'documentos_enviados', data_conclusao = NOW()
+         WHERE candidato_id = $1`,
+        [candidatoId]
+      );
+      
+      // Atualizar status do candidato
+      await pool.query(
+        `UPDATE candidatos SET status = 'documentos_enviados' WHERE id = $1`,
+        [candidatoId]
+      );
+      
+      // Notificar RH (assíncrono, não bloqueia a resposta)
+      notificarRHDocumentosCompletos(candidatoId);
+    }
+    
     res.json({
       success: true,
       url: fileUrl,
       message: 'Documento enviado com sucesso!',
+      completude: {
+        documentosEnviados: completude.documentosEnviados.length,
+        documentosFaltantes: completude.documentosFaltantes,
+        autodeclaracaoPreenchida: completude.autodeclaracaoPreenchida,
+        completo: completude.completo,
+      },
     });
   } catch (error) {
     console.error('❌ Erro no upload:', error);
@@ -863,7 +1083,7 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
     const result = await pool.query(
       `SELECT c.id, c.nome
        FROM candidatos c
-       WHERE c.status = 'aprovado'
+       WHERE c.status = 'aprovado' OR c.status = 'documentos_enviados'
        ORDER BY c.id DESC
        LIMIT 1`
     );
@@ -893,10 +1113,41 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
     
     console.log(`✅ Autodeclaração salva para ${candidato.nome}: ${raca}`);
     
+    // Verificar se todos os documentos foram enviados
+    const completude = await verificarCompletude(candidato.id);
+    console.log(`📊 Completude após autodeclaração: ${completude.documentosEnviados.length}/${DOCUMENTOS_OBRIGATORIOS.length} documentos | Autodeclaração: ${completude.autodeclaracaoPreenchida}`);
+    
+    if (completude.completo) {
+      console.log(`🎉 Candidato ${candidato.id} completou todos os documentos!`);
+      
+      // Atualizar status para "documentos_enviados"
+      await pool.query(
+        `UPDATE documentos_candidatos 
+         SET status = 'documentos_enviados', data_conclusao = NOW()
+         WHERE candidato_id = $1`,
+        [candidato.id]
+      );
+      
+      // Atualizar status do candidato
+      await pool.query(
+        `UPDATE candidatos SET status = 'documentos_enviados' WHERE id = $1`,
+        [candidato.id]
+      );
+      
+      // Notificar RH (assíncrono, não bloqueia a resposta)
+      notificarRHDocumentosCompletos(candidato.id);
+    }
+    
     res.json({
       success: true,
       message: 'Autodeclaração racial salva com sucesso',
       raca,
+      completude: {
+        documentosEnviados: completude.documentosEnviados.length,
+        documentosFaltantes: completude.documentosFaltantes,
+        autodeclaracaoPreenchida: completude.autodeclaracaoPreenchida,
+        completo: completude.completo,
+      },
     });
   } catch (error: any) {
     console.error('❌ Erro ao salvar autodeclaração:', error);
