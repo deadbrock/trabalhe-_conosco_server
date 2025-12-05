@@ -1067,7 +1067,7 @@ router.put('/rh/:id/validar', requireAuth, async (req: Request, res: Response) =
       await pool.query(
         `UPDATE documentos_candidatos 
          SET ${campoValidado} = false, ${campoRejeitado} = true, ${campoMotivoRejeicao} = $1
-         WHERE id = $1`,
+         WHERE id = $2`,
         [motivo_rejeicao, id]
       );
     }
@@ -1079,6 +1079,105 @@ router.put('/rh/:id/validar', requireAuth, async (req: Request, res: Response) =
   } catch (error: any) {
     console.error('Erro ao validar documento:', error);
     res.status(500).json({ error: 'Erro ao validar documento' });
+  }
+});
+
+/**
+ * PUT /documentos/rh/:id/validar-todos
+ * Aprovar ou rejeitar TODOS os documentos de um candidato
+ * Requer autenticação RH
+ */
+router.put('/rh/:id/validar-todos', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { acao, motivo_rejeicao } = req.body; // acao: "aprovar" ou "rejeitar"
+    
+    console.log(`📋 Validando TODOS os documentos do registro ${id} - Ação: ${acao}`);
+    
+    // Lista de todos os tipos de documentos
+    const tiposDocumentos = [
+      'foto_3x4',
+      'ctps_digital',
+      'identidade_frente',
+      'identidade_verso',
+      'comprovante_residencia',
+      'certidao_nascimento_casamento',
+      'reservista',
+      'titulo_eleitor',
+      'antecedentes_criminais',
+      'certidao_nascimento_dependente',
+      'cpf_dependente',
+    ];
+    
+    // Buscar documento para verificar quais campos têm URL
+    const docResult = await pool.query(
+      `SELECT * FROM documentos_candidatos WHERE id = $1`,
+      [id]
+    );
+    
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado' });
+    }
+    
+    const doc = docResult.rows[0];
+    let documentosAtualizados = 0;
+    
+    // Atualizar cada documento que tem URL
+    for (const tipo of tiposDocumentos) {
+      const urlKey = `${tipo}_url`;
+      
+      // Só atualizar se o documento foi enviado (tem URL)
+      if (doc[urlKey]) {
+        const campoValidado = `${tipo}_validado`;
+        const campoRejeitado = `${tipo}_rejeitado`;
+        const campoMotivoRejeicao = `${tipo}_motivo_rejeicao`;
+        
+        if (acao === 'aprovar') {
+          await pool.query(
+            `UPDATE documentos_candidatos 
+             SET ${campoValidado} = true, ${campoRejeitado} = false, ${campoMotivoRejeicao} = NULL
+             WHERE id = $1`,
+            [id]
+          );
+        } else if (acao === 'rejeitar') {
+          await pool.query(
+            `UPDATE documentos_candidatos 
+             SET ${campoValidado} = false, ${campoRejeitado} = true, ${campoMotivoRejeicao} = $1
+             WHERE id = $2`,
+            [motivo_rejeicao, id]
+          );
+        }
+        
+        documentosAtualizados++;
+      }
+    }
+    
+    // Atualizar status geral do registro
+    const novoStatus = acao === 'aprovar' ? 'aprovado' : 'rejeitado';
+    await pool.query(
+      `UPDATE documentos_candidatos SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [novoStatus, id]
+    );
+    
+    // Atualizar status do candidato também
+    await pool.query(
+      `UPDATE candidatos SET status = $1 WHERE id = $2`,
+      [novoStatus === 'aprovado' ? 'documentos_aprovados' : 'documentos_rejeitados', doc.candidato_id]
+    );
+    
+    console.log(`✅ ${documentosAtualizados} documentos ${acao === 'aprovar' ? 'aprovados' : 'rejeitados'}`);
+    
+    res.json({
+      success: true,
+      message: acao === 'aprovar' 
+        ? `✅ Todos os ${documentosAtualizados} documentos foram aprovados!` 
+        : `❌ Todos os ${documentosAtualizados} documentos foram rejeitados!`,
+      documentosAtualizados,
+      novoStatus,
+    });
+  } catch (error: any) {
+    console.error('Erro ao validar todos os documentos:', error);
+    res.status(500).json({ error: 'Erro ao validar documentos' });
   }
 });
 
