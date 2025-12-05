@@ -29,8 +29,9 @@ const storage = new CloudinaryStorage({
   params: async (req, file) => {
     return {
       folder: 'documentos_admissao',
-      allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
+      allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'webp', 'heic', 'heif', 'gif', 'bmp', 'tiff'],
       transformation: [{ quality: 'auto:good' }],
+      resource_type: 'auto', // Permite detectar automaticamente o tipo
     };
   },
 });
