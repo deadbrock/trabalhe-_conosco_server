@@ -47,6 +47,9 @@ const upload = multer({
  * Autentica candidato com CPF + Senha
  * Público (sem autenticação)
  */
+// Armazenar sessões em memória (em produção usar Redis)
+const sessoes: Map<string, { candidatoId: number; expiraEm: Date }> = new Map();
+
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { cpf, senha } = req.body;
@@ -102,10 +105,17 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'CPF ou senha inválidos' });
     }
     
-    console.log(`✅ Login bem-sucedido - Candidato: ${credencial.nome}`);
+    console.log(`✅ Login bem-sucedido - Candidato ID: ${credencial.candidato_id} - Nome: ${credencial.nome}`);
     
-    // Gerar token JWT para a sessão
+    // Gerar token para a sessão
     const token = crypto.randomBytes(32).toString('hex');
+    
+    // Armazenar sessão (expira em 24h)
+    const expiraEm = new Date();
+    expiraEm.setHours(expiraEm.getHours() + 24);
+    sessoes.set(token, { candidatoId: credencial.candidato_id, expiraEm });
+    
+    console.log(`🔑 Sessão criada - Token: ${token.substring(0, 10)}... - Candidato ID: ${credencial.candidato_id}`);
     
     res.json({
       success: true,
@@ -122,6 +132,22 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// Função auxiliar para obter candidato da sessão
+function obterCandidatoIdDaSessao(token: string): number | null {
+  const sessao = sessoes.get(token);
+  if (!sessao) {
+    console.log(`❌ Sessão não encontrada para token: ${token.substring(0, 10)}...`);
+    return null;
+  }
+  if (new Date() > sessao.expiraEm) {
+    console.log(`❌ Sessão expirada para token: ${token.substring(0, 10)}...`);
+    sessoes.delete(token);
+    return null;
+  }
+  console.log(`✅ Sessão válida - Candidato ID: ${sessao.candidatoId}`);
+  return sessao.candidatoId;
+}
+
 /**
  * GET /documentos/dados
  * Busca dados do candidato autenticado
@@ -137,12 +163,15 @@ router.get('/dados', async (req: Request, res: Response) => {
     
     console.log(`📋 Buscando dados do candidato - Token: ${token.substring(0, 10)}...`);
     
-    // Buscar candidato pelo token (armazenado temporariamente)
-    // Por enquanto, vamos buscar pelo CPF que está no token
-    // TODO: Melhorar sistema de tokens JWT
+    // Obter candidato da sessão
+    const candidatoId = obterCandidatoIdDaSessao(token);
     
-    // Decodificar token simples (por enquanto é só um hash)
-    // Vamos buscar o candidato mais recente com credenciais ativas
+    if (!candidatoId) {
+      return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+    }
+    
+    console.log(`🔍 Buscando dados do candidato ID: ${candidatoId}`);
+    
     const result = await pool.query(
       `SELECT 
         c.id, c.nome, c.email, c.telefone, c.cpf,
@@ -158,13 +187,13 @@ router.get('/dados', async (req: Request, res: Response) => {
         dc.antecedentes_criminais_url, dc.antecedentes_criminais_validado, dc.antecedentes_criminais_rejeitado, dc.antecedentes_criminais_motivo_rejeicao,
         dc.certidao_nascimento_dependente_url, dc.certidao_nascimento_dependente_validado, dc.certidao_nascimento_dependente_rejeitado, dc.certidao_nascimento_dependente_motivo_rejeicao,
         dc.cpf_dependente_url, dc.cpf_dependente_validado, dc.cpf_dependente_rejeitado, dc.cpf_dependente_motivo_rejeicao,
+        dc.autodeclaracao_racial,
         dc.status
        FROM candidatos c
        LEFT JOIN vagas v ON c.vaga_id = v.id
        LEFT JOIN documentos_candidatos dc ON dc.candidato_id = c.id
-       WHERE c.status = 'aprovado'
-       ORDER BY c.id DESC
-       LIMIT 1`
+       WHERE c.id = $1`,
+      [candidatoId]
     );
     
     if (result.rows.length === 0) {
@@ -471,18 +500,14 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     
     console.log(`📤 Upload de ${tipo_documento} - Arquivo: ${file.originalname}`);
     
-    // Buscar candidato (simplificado por enquanto)
-    const candidatoResult = await pool.query(
-      `SELECT c.id FROM candidatos c
-       WHERE c.status = 'aprovado'
-       ORDER BY c.id DESC LIMIT 1`
-    );
+    // Obter candidato da sessão
+    const candidatoId = obterCandidatoIdDaSessao(token);
     
-    if (candidatoResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Candidato não encontrado' });
+    if (!candidatoId) {
+      return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
     }
     
-    const candidatoId = candidatoResult.rows[0].id;
+    console.log(`🔍 Upload para candidato ID: ${candidatoId}`);
     
     // URL do arquivo no Cloudinary
     const fileUrl = (file as any).path;
@@ -1078,14 +1103,17 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
     
     console.log(`🌍 Salvando autodeclaração racial: ${raca}`);
     
-    // Buscar candidato pelo token (simplificado - buscar candidato aprovado mais recente)
-    // TODO: Implementar sistema de tokens JWT adequado
+    // Obter candidato da sessão
+    const candidatoId = obterCandidatoIdDaSessao(token);
+    
+    if (!candidatoId) {
+      return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+    }
+    
+    // Buscar nome do candidato
     const result = await pool.query(
-      `SELECT c.id, c.nome
-       FROM candidatos c
-       WHERE c.status = 'aprovado' OR c.status = 'documentos_enviados'
-       ORDER BY c.id DESC
-       LIMIT 1`
+      `SELECT id, nome FROM candidatos WHERE id = $1`,
+      [candidatoId]
     );
     
     if (result.rows.length === 0) {
