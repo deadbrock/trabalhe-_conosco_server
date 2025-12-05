@@ -662,10 +662,12 @@ router.post('/gerar-credenciais/:candidatoId', requireAuth, async (req: Request,
     );
     
     if (docExistenteResult.rows.length === 0) {
+      // Gerar um token único para o registro
+      const tokenAcesso = crypto.randomBytes(32).toString('hex');
       await pool.query(
         `INSERT INTO documentos_candidatos (candidato_id, token_acesso, token_expira_em)
          VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
-        [candidatoId, cpf, cpf] // Usar CPF como placeholder
+        [candidatoId, tokenAcesso]
       );
     }
     
