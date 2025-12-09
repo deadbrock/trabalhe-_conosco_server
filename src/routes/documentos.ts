@@ -626,6 +626,7 @@ router.post('/upload-foto-3x4', uploadMemory.single('file'), async (req: Request
     if (completude.completo) {
       console.log(`🎉 Candidato ${candidatoId} completou todos os documentos!`);
       
+      // Atualizar status dos documentos (não do candidato!)
       await pool.query(
         `UPDATE documentos_candidatos 
          SET status = 'documentos_enviados', data_conclusao = NOW()
@@ -633,10 +634,8 @@ router.post('/upload-foto-3x4', uploadMemory.single('file'), async (req: Request
         [candidatoId]
       );
       
-      await pool.query(
-        `UPDATE candidatos SET status = 'documentos_enviados' WHERE id = $1`,
-        [candidatoId]
-      );
+      // NOTA: Não alteramos o status do candidato aqui!
+      // O status do candidato (aprovado, reprovado, etc) permanece inalterado.
       
       notificarRHDocumentosCompletos(candidatoId);
     }
@@ -720,7 +719,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     if (completude.completo) {
       console.log(`🎉 Candidato ${candidatoId} completou todos os documentos!`);
       
-      // Atualizar status para "documentos_enviados"
+      // Atualizar status dos documentos (não do candidato!)
       await pool.query(
         `UPDATE documentos_candidatos 
          SET status = 'documentos_enviados', data_conclusao = NOW()
@@ -728,11 +727,8 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
         [candidatoId]
       );
       
-      // Atualizar status do candidato
-      await pool.query(
-        `UPDATE candidatos SET status = 'documentos_enviados' WHERE id = $1`,
-        [candidatoId]
-      );
+      // NOTA: Não alteramos o status do candidato aqui!
+      // O status do candidato (aprovado, reprovado, etc) permanece inalterado.
       
       // Notificar RH (assíncrono, não bloqueia a resposta)
       notificarRHDocumentosCompletos(candidatoId);
@@ -1335,18 +1331,16 @@ router.put('/rh/:id/validar-todos', requireAuth, async (req: Request, res: Respo
       }
     }
     
-    // Atualizar status geral do registro
+    // Atualizar status geral do registro de documentos
     const novoStatus = acao === 'aprovar' ? 'aprovado' : 'rejeitado';
     await pool.query(
       `UPDATE documentos_candidatos SET status = $1, updated_at = NOW() WHERE id = $2`,
       [novoStatus, id]
     );
     
-    // Atualizar status do candidato também
-    await pool.query(
-      `UPDATE candidatos SET status = $1 WHERE id = $2`,
-      [novoStatus === 'aprovado' ? 'documentos_aprovados' : 'documentos_rejeitados', doc.candidato_id]
-    );
+    // NOTA: Não alteramos o status do candidato aqui!
+    // O status do candidato (aprovado, reprovado, etc) é do processo seletivo.
+    // O status dos documentos é separado e fica na tabela documentos_candidatos.
     
     // Se foi aprovado, copiar URLs dos documentos para a tabela candidatos (para envio ao FGS)
     if (acao === 'aprovar') {
@@ -1542,7 +1536,7 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
     if (completude.completo) {
       console.log(`🎉 Candidato ${candidato.id} completou todos os documentos!`);
       
-      // Atualizar status para "documentos_enviados"
+      // Atualizar status dos documentos (não do candidato!)
       await pool.query(
         `UPDATE documentos_candidatos 
          SET status = 'documentos_enviados', data_conclusao = NOW()
@@ -1550,11 +1544,8 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
         [candidato.id]
       );
       
-      // Atualizar status do candidato
-      await pool.query(
-        `UPDATE candidatos SET status = 'documentos_enviados' WHERE id = $1`,
-        [candidato.id]
-      );
+      // NOTA: Não alteramos o status do candidato aqui!
+      // O status do candidato (aprovado, reprovado, etc) permanece inalterado.
       
       // Notificar RH (assíncrono, não bloqueia a resposta)
       notificarRHDocumentosCompletos(candidato.id);
