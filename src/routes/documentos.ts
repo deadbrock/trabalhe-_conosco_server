@@ -8,6 +8,7 @@ import { validarQualidadeImagem, detectarRasuras } from '../services/imageValida
 import { validarComprovanteResidencia } from '../services/ocrValidationService';
 import { enviarNotificacaoDocumentos } from '../services/notificacaoDocumentosService';
 import { requireAuth } from '../middleware/auth';
+import sharp from 'sharp';
 
 const router = Router();
 
@@ -475,6 +476,188 @@ async function notificarRHDocumentosCompletos(candidatoId: number): Promise<void
     console.error('❌ Erro ao notificar RH:', error);
   }
 }
+
+/**
+ * POST /documentos/upload-foto-3x4
+ * Upload de foto 3x4 com processamento automático (crop e redimensionamento)
+ * Garante formato 3x4 (proporção 3:4) e centraliza o conteúdo
+ * Público (requer token de sessão)
+ */
+
+// Configurar multer para memória (para processar com Sharp antes de enviar ao Cloudinary)
+const uploadMemory = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    // Aceitar apenas imagens
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Apenas imagens são permitidas para foto 3x4'));
+    }
+  }
+});
+
+router.post('/upload-foto-3x4', uploadMemory.single('file'), async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const file = req.file;
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Token não fornecido' });
+    }
+    
+    if (!file) {
+      return res.status(400).json({ error: 'Arquivo não fornecido' });
+    }
+    
+    console.log(`📸 Upload de foto 3x4 - Arquivo: ${file.originalname}`);
+    
+    // Obter candidato da sessão
+    const candidatoId = obterCandidatoIdDaSessao(token);
+    
+    if (!candidatoId) {
+      return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+    }
+    
+    console.log(`🔍 Processando foto 3x4 para candidato ID: ${candidatoId}`);
+    
+    // Processar imagem com Sharp
+    // Formato 3x4: proporção 3:4 (ex: 300x400 pixels)
+    const LARGURA_3X4 = 300;
+    const ALTURA_3X4 = 400;
+    
+    // Obter metadados da imagem original
+    const metadata = await sharp(file.buffer).metadata();
+    const { width: originalWidth, height: originalHeight } = metadata;
+    
+    console.log(`📐 Imagem original: ${originalWidth}x${originalHeight}`);
+    
+    let processedBuffer: Buffer;
+    
+    if (originalWidth && originalHeight) {
+      const originalRatio = originalWidth / originalHeight;
+      const targetRatio = LARGURA_3X4 / ALTURA_3X4; // 0.75
+      
+      let cropWidth = originalWidth;
+      let cropHeight = originalHeight;
+      let cropLeft = 0;
+      let cropTop = 0;
+      
+      if (originalRatio > targetRatio) {
+        // Imagem mais larga que 3x4 - cortar laterais
+        cropWidth = Math.round(originalHeight * targetRatio);
+        cropLeft = Math.round((originalWidth - cropWidth) / 2);
+      } else if (originalRatio < targetRatio) {
+        // Imagem mais alta que 3x4 - cortar topo/base (manter mais do topo para rosto)
+        cropHeight = Math.round(originalWidth / targetRatio);
+        // Cortar mais da parte inferior para manter o rosto visível
+        cropTop = Math.round((originalHeight - cropHeight) * 0.2); // 20% do topo, 80% da base
+      }
+      
+      console.log(`✂️ Crop: ${cropWidth}x${cropHeight} a partir de (${cropLeft}, ${cropTop})`);
+      
+      // Processar: extrair região, redimensionar e converter para JPEG
+      processedBuffer = await sharp(file.buffer)
+        .extract({
+          left: cropLeft,
+          top: cropTop,
+          width: cropWidth,
+          height: cropHeight
+        })
+        .resize(LARGURA_3X4, ALTURA_3X4, {
+          fit: 'fill',
+          position: 'north' // Prioriza a parte superior (rosto)
+        })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      
+      console.log(`✅ Imagem processada: ${LARGURA_3X4}x${ALTURA_3X4}`);
+    } else {
+      // Se não conseguir obter metadados, apenas redimensionar
+      processedBuffer = await sharp(file.buffer)
+        .resize(LARGURA_3X4, ALTURA_3X4, {
+          fit: 'cover',
+          position: 'north'
+        })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+    }
+    
+    // Fazer upload para Cloudinary
+    const uploadResult = await new Promise<any>((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'documentos_admissao',
+          resource_type: 'image',
+          format: 'jpg',
+          transformation: [{ quality: 'auto:good' }],
+          public_id: `foto_3x4_${candidatoId}_${Date.now()}`,
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(processedBuffer);
+    });
+    
+    const fileUrl = uploadResult.secure_url;
+    console.log(`☁️ Foto 3x4 enviada ao Cloudinary: ${fileUrl}`);
+    
+    // Atualizar banco de dados
+    const campoUrl = 'foto_3x4_url';
+    const campoValidado = 'foto_3x4_validado';
+    const campoRejeitado = 'foto_3x4_rejeitado';
+    
+    await pool.query(
+      `UPDATE documentos_candidatos 
+       SET ${campoUrl} = $1, ${campoValidado} = false, ${campoRejeitado} = false, data_ultimo_upload = NOW()
+       WHERE candidato_id = $2`,
+      [fileUrl, candidatoId]
+    );
+    
+    console.log(`✅ Foto 3x4 salva para candidato ${candidatoId}`);
+    
+    // Verificar completude
+    const completude = await verificarCompletude(candidatoId);
+    console.log(`📊 Completude: ${completude.documentosEnviados.length}/${DOCUMENTOS_OBRIGATORIOS.length} documentos`);
+    
+    if (completude.completo) {
+      console.log(`🎉 Candidato ${candidatoId} completou todos os documentos!`);
+      
+      await pool.query(
+        `UPDATE documentos_candidatos 
+         SET status = 'documentos_enviados', data_conclusao = NOW()
+         WHERE candidato_id = $1`,
+        [candidatoId]
+      );
+      
+      await pool.query(
+        `UPDATE candidatos SET status = 'documentos_enviados' WHERE id = $1`,
+        [candidatoId]
+      );
+      
+      notificarRHDocumentosCompletos(candidatoId);
+    }
+    
+    res.json({
+      success: true,
+      url: fileUrl,
+      message: 'Foto 3x4 processada e enviada com sucesso!',
+      dimensoes: { largura: LARGURA_3X4, altura: ALTURA_3X4 },
+      completude: {
+        documentosEnviados: completude.documentosEnviados.length,
+        documentosFaltantes: completude.documentosFaltantes,
+        autodeclaracaoPreenchida: completude.autodeclaracaoPreenchida,
+        completo: completude.completo,
+      },
+    });
+  } catch (error: any) {
+    console.error('❌ Erro no upload da foto 3x4:', error);
+    res.status(500).json({ error: 'Erro ao processar foto 3x4: ' + error.message });
+  }
+});
 
 /**
  * POST /documentos/upload

@@ -140,6 +140,7 @@ app.use("/documentos", (req, res, next) => {
     (req.method === "GET" && req.path === "/dados") || // GET /documentos/dados
     (req.method === "GET" && req.path === "/upload") || // GET /documentos/upload (página)
     (req.method === "POST" && req.path === "/upload") || // POST /documentos/upload (envio)
+    (req.method === "POST" && req.path === "/upload-foto-3x4") || // POST /documentos/upload-foto-3x4 (foto com crop)
     (req.method === "POST" && req.path === "/autodeclaracao") || // POST /documentos/autodeclaracao
     (req.method === "GET" && req.path.match(/^\/[a-f0-9]{64}$/)) || // GET /documentos/:token (legado)
     (req.method === "POST" && req.path.match(/^\/[a-f0-9]{64}\/(upload|filhos)$/)); // POST /documentos/:token/upload (legado)
