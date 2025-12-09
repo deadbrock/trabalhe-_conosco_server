@@ -1348,6 +1348,11 @@ router.put('/rh/:id/validar-todos', requireAuth, async (req: Request, res: Respo
       [novoStatus === 'aprovado' ? 'documentos_aprovados' : 'documentos_rejeitados', doc.candidato_id]
     );
     
+    // Se foi aprovado, copiar URLs dos documentos para a tabela candidatos (para envio ao FGS)
+    if (acao === 'aprovar') {
+      await copiarDocumentosParaCandidatos(doc.candidato_id);
+    }
+    
     console.log(`✅ ${documentosAtualizados} documentos ${acao === 'aprovar' ? 'aprovados' : 'rejeitados'}`);
     
     res.json({
@@ -1363,6 +1368,79 @@ router.put('/rh/:id/validar-todos', requireAuth, async (req: Request, res: Respo
     res.status(500).json({ error: 'Erro ao validar documentos' });
   }
 });
+
+/**
+ * Copia URLs dos documentos aprovados de documentos_candidatos para candidatos
+ * Isso permite que o FGS receba todos os documentos quando o candidato for enviado
+ */
+async function copiarDocumentosParaCandidatos(candidatoId: number): Promise<void> {
+  try {
+    console.log(`📋 Copiando documentos aprovados para candidato ${candidatoId}...`);
+    
+    // Buscar URLs dos documentos
+    const result = await pool.query(
+      `SELECT 
+        foto_3x4_url,
+        ctps_digital_url,
+        identidade_frente_url,
+        identidade_verso_url,
+        comprovante_residencia_url,
+        titulo_eleitor_url,
+        certidao_nascimento_casamento_url,
+        reservista_url,
+        antecedentes_criminais_url,
+        certidao_nascimento_dependente_url,
+        cpf_dependente_url
+       FROM documentos_candidatos 
+       WHERE candidato_id = $1`,
+      [candidatoId]
+    );
+    
+    if (result.rows.length === 0) {
+      console.log(`⚠️ Nenhum documento encontrado para candidato ${candidatoId}`);
+      return;
+    }
+    
+    const docs = result.rows[0];
+    
+    // Atualizar tabela candidatos com as URLs dos documentos
+    await pool.query(
+      `UPDATE candidatos 
+       SET 
+         foto_url = $1,
+         ctps_url = $2,
+         rg_frente_url = $3,
+         rg_verso_url = $4,
+         comprovante_residencia_url = $5,
+         titulo_eleitor_url = $6,
+         certidao_nascimento_url = $7,
+         reservista_url = $8,
+         antecedentes_criminais_url = $9,
+         certidao_dependente_url = $10,
+         cpf_dependente_url = $11
+       WHERE id = $12`,
+      [
+        docs.foto_3x4_url,
+        docs.ctps_digital_url,
+        docs.identidade_frente_url,
+        docs.identidade_verso_url,
+        docs.comprovante_residencia_url,
+        docs.titulo_eleitor_url,
+        docs.certidao_nascimento_casamento_url,
+        docs.reservista_url,
+        docs.antecedentes_criminais_url,
+        docs.certidao_nascimento_dependente_url,
+        docs.cpf_dependente_url,
+        candidatoId,
+      ]
+    );
+    
+    console.log(`✅ Documentos copiados para candidato ${candidatoId} - Prontos para envio ao FGS`);
+  } catch (error) {
+    console.error(`❌ Erro ao copiar documentos para candidato ${candidatoId}:`, error);
+    // Não lançar erro para não interromper o fluxo principal
+  }
+}
 
 /**
  * Gera hash SHA-256 único para verificação do documento

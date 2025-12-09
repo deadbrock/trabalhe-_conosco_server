@@ -21,6 +21,17 @@ interface DadosCandidatoFGS {
   
   // Documentos
   curriculo_url?: string;
+  foto_url?: string;
+  ctps_url?: string;
+  rg_frente_url?: string;
+  rg_verso_url?: string;
+  comprovante_residencia_url?: string;
+  titulo_eleitor_url?: string;
+  certidao_nascimento_url?: string;
+  reservista_url?: string;
+  antecedentes_criminais_url?: string;
+  certidao_dependente_url?: string;
+  cpf_dependente_url?: string;
   
   // Informações da vaga
   vaga_id: number;
@@ -63,6 +74,18 @@ export async function buscarDadosCandidato(candidatoId: number): Promise<DadosCa
       cidade: candidato.cidade || undefined,
       bairro: candidato.bairro || undefined,
       curriculo_url: candidato.curriculo || undefined,
+      // Documentos de admissão
+      foto_url: candidato.foto_url || undefined,
+      ctps_url: candidato.ctps_url || undefined,
+      rg_frente_url: candidato.rg_frente_url || undefined,
+      rg_verso_url: candidato.rg_verso_url || undefined,
+      comprovante_residencia_url: candidato.comprovante_residencia_url || undefined,
+      titulo_eleitor_url: candidato.titulo_eleitor_url || undefined,
+      certidao_nascimento_url: candidato.certidao_nascimento_url || undefined,
+      reservista_url: candidato.reservista_url || undefined,
+      antecedentes_criminais_url: candidato.antecedentes_criminais_url || undefined,
+      certidao_dependente_url: candidato.certidao_dependente_url || undefined,
+      cpf_dependente_url: candidato.cpf_dependente_url || undefined,
       vaga_id: candidato.vaga_id,
       vaga_titulo: candidato.vaga_titulo || undefined,
       candidato_id: candidato.id,
@@ -142,6 +165,17 @@ export async function enviarParaFGS(candidatoId: number): Promise<{ success: boo
       // Documentos
       documentos: {
         curriculo_url: dadosCandidato.curriculo_url,
+        foto_url: dadosCandidato.foto_url,
+        ctps_url: dadosCandidato.ctps_url,
+        rg_frente_url: dadosCandidato.rg_frente_url,
+        rg_verso_url: dadosCandidato.rg_verso_url,
+        comprovante_residencia_url: dadosCandidato.comprovante_residencia_url,
+        titulo_eleitor_url: dadosCandidato.titulo_eleitor_url,
+        certidao_nascimento_url: dadosCandidato.certidao_nascimento_url,
+        reservista_url: dadosCandidato.reservista_url,
+        antecedentes_criminais_url: dadosCandidato.antecedentes_criminais_url,
+        certidao_dependente_url: dadosCandidato.certidao_dependente_url,
+        cpf_dependente_url: dadosCandidato.cpf_dependente_url,
       },
       
       // Informações da vaga
