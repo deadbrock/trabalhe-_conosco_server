@@ -1182,13 +1182,21 @@ router.put('/rh/:id/validar-todos', requireAuth, async (req: Request, res: Respo
 });
 
 /**
+ * Gera hash SHA-256 único para verificação do documento
+ */
+function gerarHashVerificacao(candidatoId: number, cpf: string, raca: string, dataHora: string): string {
+  const dados = `${candidatoId}|${cpf}|${raca}|${dataHora}|FG_SERVICES_SECRET`;
+  return crypto.createHash('sha256').update(dados).digest('hex').substring(0, 16).toUpperCase();
+}
+
+/**
  * POST /documentos/autodeclaracao
- * Salva autodeclaração racial do candidato
+ * Salva autodeclaração racial do candidato com dados de verificação
  * Público (após login com CPF/Senha)
  */
 router.post('/autodeclaracao', async (req: Request, res: Response) => {
   try {
-    const { raca } = req.body;
+    const { raca, aceiteTermos } = req.body;
     const authHeader = req.headers.authorization;
     
     if (!authHeader) {
@@ -1203,6 +1211,11 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Raça/cor inválida' });
     }
     
+    // Validar aceite dos termos
+    if (!aceiteTermos) {
+      return res.status(400).json({ error: 'É necessário aceitar os termos da declaração' });
+    }
+    
     console.log(`🌍 Salvando autodeclaração racial: ${raca}`);
     
     // Obter candidato da sessão
@@ -1212,9 +1225,9 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
     }
     
-    // Buscar nome do candidato
+    // Buscar dados do candidato
     const result = await pool.query(
-      `SELECT id, nome FROM candidatos WHERE id = $1`,
+      `SELECT c.id, c.nome, c.cpf, c.email FROM candidatos c WHERE c.id = $1`,
       [candidatoId]
     );
     
@@ -1224,13 +1237,31 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
     
     const candidato = result.rows[0];
     
-    // Atualizar autodeclaração na tabela de documentos
+    // Capturar dados de verificação
+    const ip = req.headers['x-forwarded-for'] as string || req.headers['x-real-ip'] as string || req.socket.remoteAddress || 'IP não disponível';
+    const userAgent = req.headers['user-agent'] || 'User Agent não disponível';
+    const dataHora = new Date().toISOString();
+    
+    // Gerar hash único de verificação
+    const hashVerificacao = gerarHashVerificacao(candidato.id, candidato.cpf || '', raca, dataHora);
+    
+    console.log(`🔐 Dados de verificação:`);
+    console.log(`  - IP: ${ip}`);
+    console.log(`  - User Agent: ${userAgent.substring(0, 50)}...`);
+    console.log(`  - Hash: ${hashVerificacao}`);
+    
+    // Atualizar autodeclaração na tabela de documentos com dados de verificação
     await pool.query(
       `UPDATE documentos_candidatos 
        SET autodeclaracao_racial = $1, 
-           autodeclaracao_data = NOW()
-       WHERE candidato_id = $2`,
-      [raca, candidato.id]
+           autodeclaracao_data = NOW(),
+           autodeclaracao_ip = $2,
+           autodeclaracao_user_agent = $3,
+           autodeclaracao_hash = $4,
+           autodeclaracao_aceite_termos = true,
+           autodeclaracao_aceite_data = NOW()
+       WHERE candidato_id = $5`,
+      [raca, ip, userAgent, hashVerificacao, candidato.id]
     );
     
     // Também salvar na tabela de candidatos
@@ -1241,7 +1272,7 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
       [raca, candidato.id]
     );
     
-    console.log(`✅ Autodeclaração salva para ${candidato.nome}: ${raca}`);
+    console.log(`✅ Autodeclaração salva para ${candidato.nome}: ${raca} | Hash: ${hashVerificacao}`);
     
     // Verificar se todos os documentos foram enviados
     const completude = await verificarCompletude(candidato.id);
@@ -1272,6 +1303,7 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
       success: true,
       message: 'Autodeclaração racial salva com sucesso',
       raca,
+      hashVerificacao, // Retornar hash para exibir ao candidato
       completude: {
         documentosEnviados: completude.documentosEnviados.length,
         documentosFaltantes: completude.documentosFaltantes,
@@ -1282,6 +1314,80 @@ router.post('/autodeclaracao', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('❌ Erro ao salvar autodeclaração:', error);
     res.status(500).json({ error: 'Erro ao salvar autodeclaração' });
+  }
+});
+
+/**
+ * GET /documentos/verificar-autodeclaracao/:hash
+ * Verifica autenticidade de uma autodeclaração pelo código hash
+ * Público (para verificação externa)
+ */
+router.get('/verificar-autodeclaracao/:hash', async (req: Request, res: Response) => {
+  try {
+    const { hash } = req.params;
+    
+    if (!hash || hash.length !== 16) {
+      return res.status(400).json({ 
+        valido: false, 
+        error: 'Código de verificação inválido' 
+      });
+    }
+    
+    console.log(`🔍 Verificando autodeclaração com hash: ${hash}`);
+    
+    const result = await pool.query(
+      `SELECT 
+        dc.autodeclaracao_racial,
+        dc.autodeclaracao_data,
+        dc.autodeclaracao_ip,
+        dc.autodeclaracao_aceite_termos,
+        dc.autodeclaracao_aceite_data,
+        c.nome,
+        v.titulo as vaga
+       FROM documentos_candidatos dc
+       JOIN candidatos c ON dc.candidato_id = c.id
+       LEFT JOIN vagas v ON c.vaga_id = v.id
+       WHERE dc.autodeclaracao_hash = $1`,
+      [hash.toUpperCase()]
+    );
+    
+    if (result.rows.length === 0) {
+      console.log(`❌ Hash não encontrado: ${hash}`);
+      return res.json({ 
+        valido: false, 
+        message: 'Código de verificação não encontrado no sistema' 
+      });
+    }
+    
+    const dados = result.rows[0];
+    
+    const racaLabels: Record<string, string> = {
+      branca: 'Branca',
+      preta: 'Preta',
+      parda: 'Parda',
+      amarela: 'Amarela',
+      indigena: 'Indígena',
+      nao_declarar: 'Prefere não declarar',
+    };
+    
+    console.log(`✅ Autodeclaração verificada para: ${dados.nome}`);
+    
+    res.json({
+      valido: true,
+      message: 'Autodeclaração verificada com sucesso',
+      dados: {
+        nome: dados.nome,
+        vaga: dados.vaga || 'Não especificada',
+        racaCor: racaLabels[dados.autodeclaracao_racial] || dados.autodeclaracao_racial,
+        dataDeclaracao: dados.autodeclaracao_data,
+        aceiteTermos: dados.autodeclaracao_aceite_termos,
+        dataAceite: dados.autodeclaracao_aceite_data,
+        // Não expor IP por questões de privacidade
+      },
+    });
+  } catch (error: any) {
+    console.error('❌ Erro ao verificar autodeclaração:', error);
+    res.status(500).json({ error: 'Erro ao verificar autodeclaração' });
   }
 });
 
