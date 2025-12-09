@@ -59,6 +59,88 @@ candidatosRouter.get("/", async (req, res) => {
   res.json(rows);
 });
 
+/**
+ * GET /candidatos/:id/curriculo
+ * Gera URL assinada para download do currículo
+ * Resolve problema de arquivos privados no Cloudinary
+ */
+candidatosRouter.get("/:id/curriculo", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Buscar URL do currículo do candidato
+    const { rows } = await pool.query(
+      `SELECT curriculo, nome FROM candidatos WHERE id = $1`,
+      [id]
+    );
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Candidato não encontrado" });
+    }
+    
+    const candidato = rows[0];
+    
+    if (!candidato.curriculo) {
+      return res.status(404).json({ error: "Currículo não encontrado para este candidato" });
+    }
+    
+    const curriculoUrl = candidato.curriculo;
+    
+    // Se não é URL do Cloudinary, retornar diretamente
+    if (!curriculoUrl.includes('cloudinary.com')) {
+      return res.json({ url: curriculoUrl, nome: candidato.nome });
+    }
+    
+    // Extrair public_id da URL do Cloudinary
+    // Formato: https://res.cloudinary.com/CLOUD_NAME/raw/upload/vXXXX/FOLDER/FILENAME
+    // ou: https://res.cloudinary.com/CLOUD_NAME/raw/upload/FOLDER/FILENAME
+    let publicId = '';
+    
+    try {
+      const urlParts = curriculoUrl.split('/upload/');
+      if (urlParts.length > 1) {
+        let pathAfterUpload = urlParts[1];
+        
+        // Remover versão se existir (vXXXXXXX/)
+        if (pathAfterUpload.match(/^v\d+\//)) {
+          pathAfterUpload = pathAfterUpload.replace(/^v\d+\//, '');
+        }
+        
+        publicId = pathAfterUpload;
+      }
+    } catch (e) {
+      console.error("Erro ao extrair public_id:", e);
+      return res.json({ url: curriculoUrl, nome: candidato.nome });
+    }
+    
+    if (!publicId) {
+      return res.json({ url: curriculoUrl, nome: candidato.nome });
+    }
+    
+    console.log(`📄 Gerando URL assinada para currículo: ${publicId}`);
+    
+    // Gerar URL assinada com validade de 1 hora
+    const signedUrl = cld.url(publicId, {
+      resource_type: 'raw',
+      type: 'upload',
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hora
+      secure: true,
+    });
+    
+    console.log(`✅ URL assinada gerada: ${signedUrl.substring(0, 80)}...`);
+    
+    res.json({ 
+      url: signedUrl, 
+      nome: candidato.nome,
+      expira_em: '1 hora'
+    });
+  } catch (error: any) {
+    console.error("❌ Erro ao gerar URL do currículo:", error);
+    res.status(500).json({ error: "Erro ao gerar URL do currículo" });
+  }
+});
+
 candidatosRouter.post("/", upload.single("curriculo"), async (req, res) => {
   try {
     const { nome, cpf, data_nascimento, email, telefone, estado, cidade, bairro, vaga_id } = req.body;
