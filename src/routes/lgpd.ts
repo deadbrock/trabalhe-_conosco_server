@@ -134,7 +134,8 @@ router.post('/solicitar', async (req: Request, res: Response) => {
           <strong>Protocolo:</strong> LGPD-${solicitacao.id.toString().padStart(6, '0')}<br>
           Data: ${new Date().toLocaleString('pt-BR')}<br>
           <br>
-          Este é um email automático do Sistema de RH - FG Services<br>
+          Este é um email automático do AstronTalent - FG Services<br>
+          Desenvolvido por <strong>Aestron</strong><br>
           Para dúvidas: lgpd@fgservices.com.br
         </p>
       </div>
@@ -259,7 +260,8 @@ router.post('/validar-codigo', async (req: Request, res: Response) => {
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
         
         <p style="font-size: 12px; color: #9CA3AF; text-align: center;">
-          Este é um email automático do Sistema de RH - FG Services<br>
+          Este é um email automático do AstronTalent - FG Services<br>
+          Desenvolvido por <strong>Aestron</strong><br>
           Para dúvidas: lgpd@fgservices.com.br
         </p>
       </div>
@@ -492,7 +494,8 @@ router.post('/exportar/:id', async (req: Request, res: Response) => {
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
         
         <p style="font-size: 12px; color: #9CA3AF; text-align: center;">
-          Este é um email automático do Sistema de RH - FG Services<br>
+          Este é um email automático do AstronTalent - FG Services<br>
+          Desenvolvido por <strong>Aestron</strong><br>
           Para dúvidas: lgpd@fgservices.com.br
         </p>
       </div>
