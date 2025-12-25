@@ -9,6 +9,7 @@ import { candidatosRouter } from "./routes/candidatos";
 import { authRouter } from "./routes/auth";
 import { metricsRouter } from "./routes/metrics";
 import { setupRouter } from "./routes/setup";
+import { perfilRouter } from "./routes/perfil";
 import comentariosRouter from "./routes/comentarios";
 import tagsRouter from "./routes/tags";
 import agendamentosRouter from "./routes/agendamentos";
@@ -94,6 +95,7 @@ app.use("/candidatos", candidatosCombinedRouter);
 
 // protegidas (RH apenas)
 app.use("/metrics", requireAuth, metricsRouter);
+app.use("/perfil", requireAuth, perfilRouter);
 
 // Novas rotas FASE 1 - Todas protegidas (RH apenas)
 app.use("/comentarios", requireAuth, comentariosRouter);
