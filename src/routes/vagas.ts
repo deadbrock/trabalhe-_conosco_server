@@ -52,8 +52,33 @@ vagasRouter.put("/:id", async (req, res) => {
 });
 
 vagasRouter.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-  const result = await pool.query("DELETE FROM vagas WHERE id = $1", [id]);
-  if (result.rowCount === 0) return res.status(404).json({ error: "Vaga não encontrada" });
-  res.status(204).send();
+  try {
+    const { id } = req.params;
+    
+    // Verificar se há candidatos não movidos para banco de talentos
+    const { rows: candidatos } = await pool.query(
+      `SELECT COUNT(*) as total FROM candidatos WHERE vaga_id = $1 AND status != 'banco_talentos'`,
+      [id]
+    );
+    
+    const totalCandidatos = parseInt(candidatos[0].total);
+    
+    if (totalCandidatos > 0) {
+      return res.status(400).json({
+        error: "Não é possível excluir esta vaga",
+        message: `Há ${totalCandidatos} candidato(s) vinculado(s) a esta vaga que não estão no Banco de Talentos.`,
+        detalhes: "Para excluir a vaga sem perder os candidatos, mova todos para o 'Banco de Talentos' primeiro.",
+        candidatosRestantes: totalCandidatos
+      });
+    }
+    
+    // Se todos os candidatos estão no banco de talentos ou não há candidatos, pode excluir
+    const result = await pool.query("DELETE FROM vagas WHERE id = $1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Vaga não encontrada" });
+    
+    res.status(204).send();
+  } catch (error) {
+    console.error("Erro ao excluir vaga:", error);
+    res.status(500).json({ error: "Erro ao excluir vaga" });
+  }
 });
