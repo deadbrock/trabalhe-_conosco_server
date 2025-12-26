@@ -158,15 +158,26 @@ app.use("/documentos", (req, res, next) => {
 // Executar migração de campos de perfil na inicialização (se necessário)
 async function executarMigracaoPerfil() {
   try {
-    const checkColumn = await pool.query(`
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name='usuarios' AND column_name='foto_perfil'
-      );
+    // Verificar se todas as colunas necessárias existem
+    const checkColumns = await pool.query(`
+      SELECT 
+        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='foto_perfil') as has_foto,
+        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='telefone') as has_telefone,
+        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='cargo') as has_cargo,
+        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='criado_em') as has_criado_em,
+        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='data_atualizacao') as has_atualizacao
     `);
     
-    if (!checkColumn.rows[0].exists) {
-      console.log('📋 Colunas de perfil não existem. Adicionando...');
+    const cols = checkColumns.rows[0];
+    const allExist = cols.has_foto && cols.has_telefone && cols.has_cargo && cols.has_criado_em && cols.has_atualizacao;
+    
+    if (!allExist) {
+      console.log('📋 Executando migration de perfil...');
+      console.log(`   foto_perfil: ${cols.has_foto ? '✅' : '❌'}`);
+      console.log(`   telefone: ${cols.has_telefone ? '✅' : '❌'}`);
+      console.log(`   cargo: ${cols.has_cargo ? '✅' : '❌'}`);
+      console.log(`   criado_em: ${cols.has_criado_em ? '✅' : '❌'}`);
+      console.log(`   data_atualizacao: ${cols.has_atualizacao ? '✅' : '❌'}`);
       
       const fs = await import('fs');
       const path = await import('path');
@@ -174,7 +185,9 @@ async function executarMigracaoPerfil() {
       const sql = fs.readFileSync(sqlPath, 'utf-8');
       
       await pool.query(sql);
-      console.log('✅ Colunas de perfil adicionadas com sucesso!');
+      console.log('✅ Migration de perfil executada com sucesso!');
+    } else {
+      console.log('✅ Todas as colunas de perfil já existem');
     }
   } catch (error) {
     console.error('⚠️ Erro ao verificar/adicionar colunas de perfil:', error);
