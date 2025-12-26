@@ -155,6 +155,32 @@ app.use("/documentos", (req, res, next) => {
   requireAuth(req, res, next);
 }, documentosRouter);
 
+// Executar migração de campos de perfil na inicialização (se necessário)
+async function executarMigracaoPerfil() {
+  try {
+    const checkColumn = await pool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name='usuarios' AND column_name='foto_perfil'
+      );
+    `);
+    
+    if (!checkColumn.rows[0].exists) {
+      console.log('📋 Colunas de perfil não existem. Adicionando...');
+      
+      const fs = await import('fs');
+      const path = await import('path');
+      const sqlPath = path.join(__dirname, 'migrations', 'add_usuario_perfil_fields.sql');
+      const sql = fs.readFileSync(sqlPath, 'utf-8');
+      
+      await pool.query(sql);
+      console.log('✅ Colunas de perfil adicionadas com sucesso!');
+    }
+  } catch (error) {
+    console.error('⚠️ Erro ao verificar/adicionar colunas de perfil:', error);
+  }
+}
+
 // Executar migração de documentos na inicialização (se necessário)
 async function executarMigracaoDocumentos() {
   try {
@@ -190,6 +216,7 @@ app.listen(port, async () => {
   console.log(`🔗 Twilio WhatsApp API Configurado: ${!!process.env.TWILIO_ACCOUNT_SID}`);
   console.log(`🔐 Rotas LGPD disponíveis: /lgpd/solicitar, /lgpd/validar-codigo`);
   
-  // Executar migração automaticamente
+  // Executar migrações automaticamente
+  await executarMigracaoPerfil();
   await executarMigracaoDocumentos();
 });
