@@ -19,6 +19,7 @@ O erro `column "foto_perfil" does not exist` ocorria porque a tabela `usuarios` 
 - `foto_perfil` - URL da foto de perfil (Cloudinary)
 - `telefone` - Telefone de contato
 - `cargo` - Cargo/função do usuário
+- `criado_em` - Data de criação do usuário
 - `data_atualizacao` - Data da última atualização
 
 ### 4. **Frontend - Logo no Rodapé** (`components/RHLayout.tsx`)
@@ -59,7 +60,7 @@ O Railway vai detectar o push e fazer o deploy automaticamente. Quando o servido
 1. ✅ O servidor será compilado com as novas alterações
 2. ✅ Na inicialização, a função `executarMigracaoPerfil()` será chamada
 3. ✅ A migration SQL será executada (se necessário)
-4. ✅ As colunas `foto_perfil`, `telefone`, `cargo`, `data_atualizacao` serão criadas
+4. ✅ As colunas `foto_perfil`, `telefone`, `cargo`, `criado_em`, `data_atualizacao` serão criadas
 5. ✅ O endpoint `/perfil` funcionará corretamente
 6. ✅ Upload de foto de perfil funcionará
 7. ✅ Atualização de perfil funcionará

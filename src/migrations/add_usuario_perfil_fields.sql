@@ -25,6 +25,13 @@ BEGIN
     RAISE NOTICE 'Coluna cargo adicionada';
   END IF;
 
+  -- Adicionar coluna criado_em se não existir
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='usuarios' AND column_name='criado_em') THEN
+    ALTER TABLE usuarios ADD COLUMN criado_em TIMESTAMP DEFAULT NOW();
+    RAISE NOTICE 'Coluna criado_em adicionada';
+  END IF;
+
   -- Adicionar coluna data_atualizacao se não existir
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                  WHERE table_name='usuarios' AND column_name='data_atualizacao') THEN
@@ -45,5 +52,6 @@ END $$;
 COMMENT ON COLUMN usuarios.foto_perfil IS 'URL da foto de perfil do usuário (Cloudinary)';
 COMMENT ON COLUMN usuarios.telefone IS 'Telefone de contato do usuário RH';
 COMMENT ON COLUMN usuarios.cargo IS 'Cargo/função do usuário RH';
+COMMENT ON COLUMN usuarios.criado_em IS 'Data de criação do usuário';
 COMMENT ON COLUMN usuarios.data_atualizacao IS 'Data da última atualização do perfil';
 
