@@ -123,12 +123,13 @@ export async function dispararGatilho(
   evento: string,
   candidatoId: number,
   vagaId?: number,
-  dadosExtras?: Partial<DadosVariaveis>
+  dadosExtras?: Partial<DadosVariaveis>,
+  filialId: number = 1
 ): Promise<{ sucesso: boolean; mensagem: string }> {
   try {
-    console.log(`🔔 Disparando gatilho: ${evento} para candidato ${candidatoId}`);
+    console.log(`🔔 Disparando gatilho: ${evento} para candidato ${candidatoId} (filial ${filialId})`);
 
-    // Buscar configuração do gatilho
+    // Buscar configuração do gatilho da filial correta
     const gatilhoResult = await pool.query(
       `SELECT 
         g.*,
@@ -138,8 +139,8 @@ export async function dispararGatilho(
       FROM configuracao_gatilhos g
       LEFT JOIN templates te ON g.template_email_id = te.id AND te.ativo = true
       LEFT JOIN templates tw ON g.template_whatsapp_id = tw.id AND tw.ativo = true
-      WHERE g.evento = $1`,
-      [evento]
+      WHERE g.evento = $1 AND g.filial_id = $2`,
+      [evento, filialId]
     );
 
     if (gatilhoResult.rows.length === 0) {
@@ -184,8 +185,8 @@ export async function dispararGatilho(
       // Salvar no histórico
       await pool.query(
         `INSERT INTO historico_comunicacao 
-          (candidato_id, vaga_id, template_id, tipo, destinatario, assunto, conteudo, status, erro, enviado_por)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          (candidato_id, vaga_id, template_id, tipo, destinatario, assunto, conteudo, status, erro, enviado_por, filial_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           candidatoId,
           vagaId || null,
@@ -196,7 +197,8 @@ export async function dispararGatilho(
           conteudo,
           resultado.sucesso ? 'enviado' : 'falhou',
           resultado.erro || null,
-          'automatico'
+          'automatico',
+          filialId
         ]
       );
 
@@ -261,37 +263,38 @@ export async function dispararGatilho(
   }
 }
 
-// Funções específicas para cada evento
-export async function notificarInscricao(candidatoId: number, vagaId: number) {
-  return dispararGatilho('inscricao_recebida', candidatoId, vagaId);
+// Funções específicas para cada evento (todas recebem filialId para isolamento de dados)
+export async function notificarInscricao(candidatoId: number, vagaId: number, filialId: number = 1) {
+  return dispararGatilho('inscricao_recebida', candidatoId, vagaId, undefined, filialId);
 }
 
-export async function notificarEmAnalise(candidatoId: number, vagaId: number) {
-  return dispararGatilho('status_em_analise', candidatoId, vagaId);
+export async function notificarEmAnalise(candidatoId: number, vagaId: number, filialId: number = 1) {
+  return dispararGatilho('status_em_analise', candidatoId, vagaId, undefined, filialId);
 }
 
-export async function notificarPreSelecionado(candidatoId: number, vagaId: number) {
-  return dispararGatilho('status_pre_selecionado', candidatoId, vagaId);
+export async function notificarPreSelecionado(candidatoId: number, vagaId: number, filialId: number = 1) {
+  return dispararGatilho('status_pre_selecionado', candidatoId, vagaId, undefined, filialId);
 }
 
 export async function notificarConviteEntrevista(
   candidatoId: number,
   vagaId: number,
-  agendamento: DadosAgendamento
+  agendamento: DadosAgendamento,
+  filialId: number = 1
 ) {
   return dispararGatilho('convite_entrevista', candidatoId, vagaId, {
     data: agendamento.data,
     hora: agendamento.hora,
     local: agendamento.local,
     link: agendamento.link
-  });
+  }, filialId);
 }
 
-export async function notificarAprovado(candidatoId: number, vagaId: number) {
-  return dispararGatilho('status_aprovado', candidatoId, vagaId);
+export async function notificarAprovado(candidatoId: number, vagaId: number, filialId: number = 1) {
+  return dispararGatilho('status_aprovado', candidatoId, vagaId, undefined, filialId);
 }
 
-export async function notificarReprovado(candidatoId: number, vagaId: number) {
-  return dispararGatilho('status_reprovado', candidatoId, vagaId);
+export async function notificarReprovado(candidatoId: number, vagaId: number, filialId: number = 1) {
+  return dispararGatilho('status_reprovado', candidatoId, vagaId, undefined, filialId);
 }
 

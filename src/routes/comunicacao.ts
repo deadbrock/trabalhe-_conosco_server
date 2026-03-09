@@ -1,28 +1,27 @@
-import express, { Request, Response } from 'express';
-import { Pool } from 'pg';
-import { enviarEmail, substituirVariaveis as substituirVariaveisEmail } from '../services/emailService';
-import { enviarWhatsApp, substituirVariaveis as substituirVariaveisWhatsApp } from '../services/whatsappService';
+import express, { Request, Response } from "express";
+import { pool } from "../db";
+import { enviarEmail, substituirVariaveis as substituirVariaveisEmail } from "../services/emailService";
+import { enviarWhatsApp, substituirVariaveis as substituirVariaveisWhatsApp } from "../services/whatsappService";
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 interface AuthRequest extends Request {
   user?: {
     id: number;
     nome: string;
     email: string;
+    filial_id?: number;
   };
 }
 
-// ==========================================
-// GET /comunicacao/historico - Listar histórico de comunicações
-// ==========================================
-router.get('/historico', async (req: Request, res: Response) => {
+// GET /comunicacao/historico
+router.get("/historico", async (req: Request, res: Response) => {
   try {
+    const filialId: number = (req as any).user?.filial_id || 1;
     const { candidato_id, vaga_id, tipo, status, limit = 50, offset = 0 } = req.query;
-    
+
     let query = `
-      SELECT 
+      SELECT
         hc.*,
         c.nome as candidato_nome,
         c.email as candidato_email,
@@ -34,10 +33,10 @@ router.get('/historico', async (req: Request, res: Response) => {
       LEFT JOIN vagas v ON hc.vaga_id = v.id
       LEFT JOIN usuarios u ON hc.usuario_id = u.id
       LEFT JOIN templates t ON hc.template_id = t.id
-      WHERE 1=1
+      WHERE hc.filial_id = $1
     `;
-    const params: any[] = [];
-    let paramCount = 1;
+    const params: any[] = [filialId];
+    let paramCount = 2;
 
     if (candidato_id) {
       query += ` AND hc.candidato_id = $${paramCount}`;
@@ -68,276 +67,191 @@ router.get('/historico', async (req: Request, res: Response) => {
 
     const result = await pool.query(query, params);
 
-    // Contar total
-    let countQuery = 'SELECT COUNT(*) FROM historico_comunicacao WHERE 1=1';
-    const countParams: any[] = [];
-    let countParamIndex = 1;
-
-    if (candidato_id) {
-      countQuery += ` AND candidato_id = $${countParamIndex}`;
-      countParams.push(candidato_id);
-      countParamIndex++;
-    }
-
-    if (vaga_id) {
-      countQuery += ` AND vaga_id = $${countParamIndex}`;
-      countParams.push(vaga_id);
-      countParamIndex++;
-    }
-
-    if (tipo) {
-      countQuery += ` AND tipo = $${countParamIndex}`;
-      countParams.push(tipo);
-      countParamIndex++;
-    }
-
-    if (status) {
-      countQuery += ` AND status = $${countParamIndex}`;
-      countParams.push(status);
-      countParamIndex++;
-    }
-
-    const countResult = await pool.query(countQuery, countParams);
+    const countResult = await pool.query(
+      "SELECT COUNT(*) FROM historico_comunicacao WHERE filial_id = $1",
+      [filialId]
+    );
     const total = parseInt(countResult.rows[0].count);
 
     res.json({
       historico: result.rows,
       total,
       limit: parseInt(limit as string),
-      offset: parseInt(offset as string)
+      offset: parseInt(offset as string),
     });
   } catch (error) {
-    console.error('Erro ao listar histórico:', error);
-    res.status(500).json({ error: 'Erro ao listar histórico' });
+    console.error("Erro ao listar histórico:", error);
+    res.status(500).json({ error: "Erro ao listar histórico" });
   }
 });
 
-// ==========================================
-// POST /comunicacao/enviar - Enviar comunicação manual
-// ==========================================
-router.post('/enviar', async (req: AuthRequest, res: Response) => {
+// POST /comunicacao/enviar
+router.post("/enviar", async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      candidato_id,
-      vaga_id,
-      template_id,
-      tipo,
-      destinatario,
-      assunto,
-      conteudo,
-      variaveis
-    } = req.body;
+    const filialId: number = (req as any).user?.filial_id || 1;
+    const { candidato_id, vaga_id, template_id, tipo, destinatario, assunto, conteudo, variaveis } = req.body;
 
-    // Validações
-    if (!tipo || !['email', 'whatsapp'].includes(tipo)) {
-      return res.status(400).json({ error: 'Tipo inválido' });
+    if (!tipo || !["email", "whatsapp"].includes(tipo)) {
+      return res.status(400).json({ error: "Tipo inválido" });
     }
 
     if (!destinatario || !conteudo) {
-      return res.status(400).json({ error: 'Destinatário e conteúdo são obrigatórios' });
+      return res.status(400).json({ error: "Destinatário e conteúdo são obrigatórios" });
     }
 
-    if (tipo === 'email' && !assunto) {
-      return res.status(400).json({ error: 'Assunto é obrigatório para emails' });
+    if (tipo === "email" && !assunto) {
+      return res.status(400).json({ error: "Assunto é obrigatório para emails" });
     }
 
-    // Substituir variáveis
     let conteudoFinal = conteudo;
     let assuntoFinal = assunto;
 
     if (variaveis && Object.keys(variaveis).length > 0) {
-      if (tipo === 'email') {
+      if (tipo === "email") {
         conteudoFinal = await substituirVariaveisEmail(conteudo, variaveis);
-        if (assunto) {
-          assuntoFinal = await substituirVariaveisEmail(assunto, variaveis);
-        }
+        if (assunto) assuntoFinal = await substituirVariaveisEmail(assunto, variaveis);
       } else {
         conteudoFinal = await substituirVariaveisWhatsApp(conteudo, variaveis);
       }
     }
 
-    // Enviar
     let resultado;
-    if (tipo === 'email') {
-      resultado = await enviarEmail({
-        destinatario,
-        assunto: assuntoFinal || '',
-        conteudo: conteudoFinal
-      });
+    if (tipo === "email") {
+      resultado = await enviarEmail({ destinatario, assunto: assuntoFinal || "", conteudo: conteudoFinal });
     } else {
-      resultado = await enviarWhatsApp({
-        numero: destinatario,
-        mensagem: conteudoFinal
-      });
+      resultado = await enviarWhatsApp({ numero: destinatario, mensagem: conteudoFinal });
     }
 
-    // Salvar no histórico
     await pool.query(
-      `INSERT INTO historico_comunicacao 
-        (candidato_id, vaga_id, usuario_id, template_id, tipo, destinatario, assunto, conteudo, status, erro, metadata, enviado_por)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      `INSERT INTO historico_comunicacao
+        (candidato_id, vaga_id, usuario_id, template_id, tipo, destinatario, assunto, conteudo, status, erro, metadata, enviado_por, filial_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         candidato_id || null,
         vaga_id || null,
-        req.user?.id || null,
+        (req as any).user?.sub || null,
         template_id || null,
         tipo,
         destinatario,
         assuntoFinal || null,
         conteudoFinal,
-        resultado.sucesso ? 'enviado' : 'falhou',
+        resultado.sucesso ? "enviado" : "falhou",
         resultado.erro || null,
         JSON.stringify({ messageId: resultado.messageId }),
-        'manual'
+        "manual",
+        filialId,
       ]
     );
 
     if (!resultado.sucesso) {
-      return res.status(500).json({ 
-        error: 'Falha ao enviar', 
-        detalhes: resultado.erro 
-      });
+      return res.status(500).json({ error: "Falha ao enviar", detalhes: resultado.erro });
     }
 
-    res.json({ 
-      message: 'Comunicação enviada com sucesso',
-      messageId: resultado.messageId
-    });
+    res.json({ message: "Comunicação enviada com sucesso", messageId: resultado.messageId });
   } catch (error) {
-    console.error('Erro ao enviar comunicação:', error);
-    res.status(500).json({ error: 'Erro ao enviar comunicação' });
+    console.error("Erro ao enviar comunicação:", error);
+    res.status(500).json({ error: "Erro ao enviar comunicação" });
   }
 });
 
-// ==========================================
-// POST /comunicacao/enviar-template - Enviar usando template
-// ==========================================
-router.post('/enviar-template', async (req: AuthRequest, res: Response) => {
+// POST /comunicacao/enviar-template
+router.post("/enviar-template", async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      candidato_id,
-      vaga_id,
-      template_id,
-      variaveis
-    } = req.body;
+    const filialId: number = (req as any).user?.filial_id || 1;
+    const { candidato_id, vaga_id, template_id, variaveis } = req.body;
 
     if (!template_id) {
-      return res.status(400).json({ error: 'template_id é obrigatório' });
+      return res.status(400).json({ error: "template_id é obrigatório" });
     }
 
-    // Buscar template
     const templateResult = await pool.query(
-      'SELECT * FROM templates WHERE id = $1 AND ativo = true',
-      [template_id]
+      "SELECT * FROM templates WHERE id = $1 AND ativo = true AND filial_id = $2",
+      [template_id, filialId]
     );
 
     if (templateResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Template não encontrado ou inativo' });
+      return res.status(404).json({ error: "Template não encontrado ou inativo" });
     }
 
     const template = templateResult.rows[0];
-
-    // Buscar dados do candidato se fornecido
-    let destinatario = '';
+    let destinatario = "";
     let dadosVariaveis = { ...variaveis };
 
     if (candidato_id) {
       const candidatoResult = await pool.query(
-        'SELECT * FROM candidatos WHERE id = $1',
-        [candidato_id]
+        "SELECT * FROM candidatos WHERE id = $1 AND filial_id = $2",
+        [candidato_id, filialId]
       );
 
       if (candidatoResult.rows.length > 0) {
         const candidato = candidatoResult.rows[0];
-        destinatario = template.tipo === 'email' ? candidato.email : candidato.telefone;
-        
-        // Adicionar dados do candidato às variáveis
-        dadosVariaveis = {
-          nome: candidato.nome,
-          email: candidato.email,
-          telefone: candidato.telefone,
-          ...dadosVariaveis
-        };
+        destinatario = template.tipo === "email" ? candidato.email : candidato.telefone;
+        dadosVariaveis = { nome: candidato.nome, email: candidato.email, telefone: candidato.telefone, ...dadosVariaveis };
       }
     }
 
-    // Buscar dados da vaga se fornecido
     if (vaga_id) {
       const vagaResult = await pool.query(
-        'SELECT * FROM vagas WHERE id = $1',
-        [vaga_id]
+        "SELECT * FROM vagas WHERE id = $1 AND filial_id = $2",
+        [vaga_id, filialId]
       );
-
       if (vagaResult.rows.length > 0) {
         dadosVariaveis.vaga = vagaResult.rows[0].titulo;
       }
     }
 
-    // Adicionar dados padrão
     dadosVariaveis = {
-      empresa: 'FG Services',
-      data: new Date().toLocaleDateString('pt-BR'),
-      rh_nome: req.user?.nome || 'Equipe de RH',
-      rh_email: req.user?.email || 'rh@fgservices.com.br',
-      ...dadosVariaveis
+      empresa: "FG Services",
+      data: new Date().toLocaleDateString("pt-BR"),
+      rh_nome: (req as any).user?.nome || "Equipe de RH",
+      rh_email: (req as any).user?.email || "rh@fgservices.com.br",
+      ...dadosVariaveis,
     };
 
-    // Substituir variáveis
     let conteudoFinal = template.conteudo;
     let assuntoFinal = template.assunto;
 
-    if (template.tipo === 'email') {
+    if (template.tipo === "email") {
       conteudoFinal = await substituirVariaveisEmail(template.conteudo, dadosVariaveis);
-      if (template.assunto) {
-        assuntoFinal = await substituirVariaveisEmail(template.assunto, dadosVariaveis);
-      }
+      if (template.assunto) assuntoFinal = await substituirVariaveisEmail(template.assunto, dadosVariaveis);
     } else {
       conteudoFinal = await substituirVariaveisWhatsApp(template.conteudo, dadosVariaveis);
     }
 
-    // Enviar
     let resultado;
-    if (template.tipo === 'email') {
-      resultado = await enviarEmail({
-        destinatario,
-        assunto: assuntoFinal || '',
-        conteudo: conteudoFinal
-      });
+    if (template.tipo === "email") {
+      resultado = await enviarEmail({ destinatario, assunto: assuntoFinal || "", conteudo: conteudoFinal });
     } else {
-      resultado = await enviarWhatsApp({
-        numero: destinatario,
-        mensagem: conteudoFinal
-      });
+      resultado = await enviarWhatsApp({ numero: destinatario, mensagem: conteudoFinal });
     }
 
-    // Salvar no histórico
     await pool.query(
-      `INSERT INTO historico_comunicacao 
-        (candidato_id, vaga_id, usuario_id, template_id, tipo, destinatario, assunto, conteudo, status, erro, metadata, enviado_por)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      `INSERT INTO historico_comunicacao
+        (candidato_id, vaga_id, usuario_id, template_id, tipo, destinatario, assunto, conteudo, status, erro, metadata, enviado_por, filial_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         candidato_id || null,
         vaga_id || null,
-        req.user?.id || null,
+        (req as any).user?.sub || null,
         template_id,
         template.tipo,
         destinatario,
         assuntoFinal || null,
         conteudoFinal,
-        resultado.sucesso ? 'enviado' : 'falhou',
+        resultado.sucesso ? "enviado" : "falhou",
         resultado.erro || null,
         JSON.stringify({ messageId: resultado.messageId }),
-        'manual'
+        "manual",
+        filialId,
       ]
     );
 
-    // Atualizar estatísticas do template
     if (resultado.sucesso) {
       await pool.query(
-        `UPDATE templates 
+        `UPDATE templates
          SET estatisticas = jsonb_set(
-           estatisticas, 
-           '{enviados}', 
+           estatisticas,
+           '{enviados}',
            ((estatisticas->>'enviados')::int + 1)::text::jsonb
          )
          WHERE id = $1`,
@@ -345,10 +259,10 @@ router.post('/enviar-template', async (req: AuthRequest, res: Response) => {
       );
     } else {
       await pool.query(
-        `UPDATE templates 
+        `UPDATE templates
          SET estatisticas = jsonb_set(
-           estatisticas, 
-           '{falhas}', 
+           estatisticas,
+           '{falhas}',
            ((estatisticas->>'falhas')::int + 1)::text::jsonb
          )
          WHERE id = $1`,
@@ -357,35 +271,28 @@ router.post('/enviar-template', async (req: AuthRequest, res: Response) => {
     }
 
     if (!resultado.sucesso) {
-      return res.status(500).json({ 
-        error: 'Falha ao enviar', 
-        detalhes: resultado.erro 
-      });
+      return res.status(500).json({ error: "Falha ao enviar", detalhes: resultado.erro });
     }
 
-    res.json({ 
-      message: 'Comunicação enviada com sucesso',
+    res.json({
+      message: "Comunicação enviada com sucesso",
       messageId: resultado.messageId,
-      preview: {
-        assunto: assuntoFinal,
-        conteudo: conteudoFinal.substring(0, 200) + '...'
-      }
+      preview: { assunto: assuntoFinal, conteudo: conteudoFinal.substring(0, 200) + "..." },
     });
   } catch (error) {
-    console.error('Erro ao enviar template:', error);
-    res.status(500).json({ error: 'Erro ao enviar template' });
+    console.error("Erro ao enviar template:", error);
+    res.status(500).json({ error: "Erro ao enviar template" });
   }
 });
 
-// ==========================================
-// GET /comunicacao/estatisticas - Estatísticas de comunicação
-// ==========================================
-router.get('/estatisticas', async (req: Request, res: Response) => {
+// GET /comunicacao/estatisticas
+router.get("/estatisticas", async (req: Request, res: Response) => {
   try {
+    const filialId: number = (req as any).user?.filial_id || 1;
     const { dias = 30 } = req.query;
 
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         tipo,
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'enviado' OR status = 'entregue' OR status = 'lido' THEN 1 END) as sucesso,
@@ -393,75 +300,53 @@ router.get('/estatisticas', async (req: Request, res: Response) => {
         COUNT(CASE WHEN status = 'lido' THEN 1 END) as lidos
        FROM historico_comunicacao
        WHERE enviado_em >= NOW() - INTERVAL '${parseInt(dias as string)} days'
+         AND filial_id = $1
        GROUP BY tipo`,
+      [filialId]
     );
 
     const estatisticas = {
-      email: {
-        total: 0,
-        sucesso: 0,
-        falhas: 0,
-        lidos: 0,
-        taxa_sucesso: 0,
-        taxa_abertura: 0
-      },
-      whatsapp: {
-        total: 0,
-        sucesso: 0,
-        falhas: 0,
-        lidos: 0,
-        taxa_sucesso: 0,
-        taxa_leitura: 0
-      }
+      email: { total: 0, sucesso: 0, falhas: 0, lidos: 0, taxa_sucesso: 0, taxa_abertura: 0 },
+      whatsapp: { total: 0, sucesso: 0, falhas: 0, lidos: 0, taxa_sucesso: 0, taxa_leitura: 0 },
     };
 
-    result.rows.forEach(row => {
-      const tipo = row.tipo as 'email' | 'whatsapp';
-      const baseStats = {
+    result.rows.forEach((row) => {
+      const tipo = row.tipo as "email" | "whatsapp";
+      estatisticas[tipo] = {
         total: parseInt(row.total),
         sucesso: parseInt(row.sucesso),
         falhas: parseInt(row.falhas),
         lidos: parseInt(row.lidos),
-        taxa_sucesso: parseInt(row.total) > 0 
-          ? Math.round((parseInt(row.sucesso) / parseInt(row.total)) * 100)
-          : 0,
-        taxa_abertura: parseInt(row.total) > 0 
-          ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100)
-          : 0,
-        taxa_leitura: parseInt(row.total) > 0 
-          ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100)
-          : 0
+        taxa_sucesso: parseInt(row.total) > 0 ? Math.round((parseInt(row.sucesso) / parseInt(row.total)) * 100) : 0,
+        taxa_abertura: parseInt(row.total) > 0 ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100) : 0,
+        taxa_leitura: parseInt(row.total) > 0 ? Math.round((parseInt(row.lidos) / parseInt(row.total)) * 100) : 0,
       };
-      estatisticas[tipo] = baseStats;
     });
 
     res.json(estatisticas);
   } catch (error) {
-    console.error('Erro ao buscar estatísticas:', error);
-    res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+    console.error("Erro ao buscar estatísticas:", error);
+    res.status(500).json({ error: "Erro ao buscar estatísticas" });
   }
 });
 
-// ==========================================
-// POST /comunicacao/testar-email - Enviar email de teste
-// ==========================================
-router.post('/testar-email', async (req: Request, res: Response) => {
+// POST /comunicacao/testar-email
+router.post("/testar-email", async (req: Request, res: Response) => {
   try {
     const { destinatario, assunto, mensagem } = req.body;
 
     if (!destinatario) {
-      return res.status(400).json({ error: 'Destinatário é obrigatório' });
+      return res.status(400).json({ error: "Destinatário é obrigatório" });
     }
 
-    const assuntoFinal = assunto || '✅ Teste de Email - Sistema RH';
-    const mensagemFinal = mensagem || `
+    const assuntoFinal = assunto || "✅ Teste de Email - Sistema RH";
+    const mensagemFinal =
+      mensagem ||
+      `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #4F46E5;">🎉 Email de Teste - Sistema RH</h2>
-        
         <p>Olá!</p>
-        
         <p>Este é um <strong>email de teste</strong> enviado pelo sistema de Recrutamento e Seleção.</p>
-        
         <div style="background-color: #F3F4F6; padding: 15px; border-radius: 8px; margin: 20px 0;">
           <h3 style="margin-top: 0; color: #1F2937;">✅ Configuração do Email:</h3>
           <ul style="color: #4B5563;">
@@ -470,51 +355,32 @@ router.post('/testar-email', async (req: Request, res: Response) => {
             <li>⚡ Status: <strong>Funcionando</strong></li>
           </ul>
         </div>
-        
-        <p style="color: #6B7280;">Se você recebeu este email, significa que o sistema de comunicação está <strong>100% operacional</strong>!</p>
-        
+        <p style="color: #6B7280;">Se você recebeu este email, significa que o sistema está <strong>100% operacional</strong>!</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
-        
         <p style="font-size: 12px; color: #9CA3AF; text-align: center;">
           Enviado automaticamente pelo Sistema de RH<br>
-          Data: ${new Date().toLocaleString('pt-BR')}
+          Data: ${new Date().toLocaleString("pt-BR")}
         </p>
       </div>
     `;
 
-    console.log(`📧 Enviando email de teste para: ${destinatario}`);
-
-    const resultado = await enviarEmail({
-      destinatario,
-      assunto: assuntoFinal,
-      conteudo: mensagemFinal
-    });
+    const resultado = await enviarEmail({ destinatario, assunto: assuntoFinal, conteudo: mensagemFinal });
 
     if (!resultado.sucesso) {
-      console.error(`❌ Erro ao enviar email de teste:`, resultado.erro);
-      return res.status(500).json({ 
-        error: 'Falha ao enviar email', 
-        detalhes: resultado.erro 
-      });
+      return res.status(500).json({ error: "Falha ao enviar email", detalhes: resultado.erro });
     }
 
-    console.log(`✅ Email de teste enviado com sucesso! ID: ${resultado.messageId}`);
-
-    res.json({ 
-      message: '✅ Email de teste enviado com sucesso!',
+    res.json({
+      message: "✅ Email de teste enviado com sucesso!",
       destinatario,
       assunto: assuntoFinal,
       messageId: resultado.messageId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error('❌ Erro ao enviar email de teste:', error);
-    res.status(500).json({ 
-      error: 'Erro ao enviar email de teste',
-      detalhes: error.message
-    });
+    console.error("❌ Erro ao enviar email de teste:", error);
+    res.status(500).json({ error: "Erro ao enviar email de teste", detalhes: error.message });
   }
 });
 
 export default router;
-

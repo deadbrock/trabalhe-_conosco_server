@@ -21,7 +21,7 @@ import comunicacaoRouter from "./routes/comunicacao";
 import gatilhosRouter from "./routes/gatilhos";
 import whatsappRouter from "./routes/whatsapp";
 import lgpdRouter from "./routes/lgpd";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, optionalAuth } from "./middleware/auth";
 
 dotenv.config();
 
@@ -60,13 +60,13 @@ app.get("/whatsapp-status", async (_req, res) => {
 app.use("/auth", authRouter);
 app.use("/setup", setupRouter);
 
-// Rotas de vagas: combina rotas públicas e protegidas
+// Rotas de vagas: GET é público mas aceita token opcional para filtrar por filial
 const vagasCombinedRouter = Router();
 
-// GET público (sem autenticação)
 vagasCombinedRouter.use((req, res, next) => {
   if (req.method === "GET") {
-    return next();
+    // Tenta decodificar o token se presente, mas não bloqueia se ausente
+    return optionalAuth(req, res, next);
   }
   requireAuth(req, res, next);
 });
@@ -132,7 +132,7 @@ app.use("/lgpd", (req, res, next) => {
 
 const port = process.env.PORT || 3333;
 app.listen(port, () => {
-  console.log(`🚀 API v1.3.2 listening on http://localhost:${port}`);
+  console.log(`🚀 API v1.4.0 listening on http://localhost:${port}`);
   console.log(`📱 WhatsApp Status disponível em: /whatsapp-status`);
   console.log(`🔗 Twilio WhatsApp API Configurado: ${!!process.env.TWILIO_ACCOUNT_SID}`);
   console.log(`🔐 Rotas LGPD disponíveis: /lgpd/solicitar, /lgpd/validar-codigo`);

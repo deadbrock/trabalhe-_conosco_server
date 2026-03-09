@@ -295,6 +295,7 @@ router.post('/validar-codigo', async (req: Request, res: Response) => {
 // ==========================================
 router.get('/solicitacoes', async (req: Request, res: Response) => {
   try {
+    const filialId: number = (req as any).user?.filial_id || 1;
     const { status, tipo, limit = 50 } = req.query;
 
     let query = `
@@ -307,11 +308,11 @@ router.get('/solicitacoes', async (req: Request, res: Response) => {
       FROM solicitacoes_lgpd s
       JOIN candidatos c ON s.candidato_id = c.id
       LEFT JOIN usuarios u ON s.aprovado_por = u.id
-      WHERE 1=1
+      WHERE c.filial_id = $1
     `;
 
-    const params: any[] = [];
-    let paramIndex = 1;
+    const params: any[] = [filialId];
+    let paramIndex = 2;
 
     if (status) {
       query += ` AND s.status = $${paramIndex}`;
