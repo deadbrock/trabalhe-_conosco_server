@@ -21,7 +21,8 @@ import comunicacaoRouter from "./routes/comunicacao";
 import gatilhosRouter from "./routes/gatilhos";
 import whatsappRouter from "./routes/whatsapp";
 import lgpdRouter from "./routes/lgpd";
-import { requireAuth, optionalAuth } from "./middleware/auth";
+import gestaoRouter from "./routes/gestao";
+import { requireAuth, optionalAuth, requireGestor } from "./middleware/auth";
 
 dotenv.config();
 
@@ -130,9 +131,12 @@ app.use("/lgpd", (req, res, next) => {
   requireAuth(req, res, next);
 }, lgpdRouter);
 
+// Rotas de Gestão: apenas para perfil "gestor"
+app.use("/gestao", requireGestor, gestaoRouter);
+
 const port = process.env.PORT || 3333;
 app.listen(port, () => {
-  console.log(`🚀 API v1.4.0 listening on http://localhost:${port}`);
+  console.log(`🚀 API v1.5.0 listening on http://localhost:${port}`);
   console.log(`📱 WhatsApp Status disponível em: /whatsapp-status`);
   console.log(`🔗 Twilio WhatsApp API Configurado: ${!!process.env.TWILIO_ACCOUNT_SID}`);
   console.log(`🔐 Rotas LGPD disponíveis: /lgpd/solicitar, /lgpd/validar-codigo`);

@@ -1,10 +1,14 @@
 import { Resend } from 'resend';
 import { enviarEmailSendGrid } from './sendgridService';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Instanciar Resend apenas se a chave estiver configurada
+let resend: Resend | null = null;
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+}
 
 // Determinar qual provedor usar
-const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'resend'; // 'resend' ou 'sendgrid'
+const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'sendgrid'; // 'resend' ou 'sendgrid'
 
 interface EnviarEmailParams {
   destinatario: string;
@@ -49,7 +53,7 @@ export async function enviarEmail({
   // Fallback para Resend
   try {
     // Verificar se Resend está configurado
-    if (!process.env.RESEND_API_KEY) {
+    if (!resend || !process.env.RESEND_API_KEY) {
       console.warn('⚠️ Nenhum provedor de email configurado (RESEND_API_KEY ou SENDGRID_API_KEY)');
       return {
         sucesso: false,

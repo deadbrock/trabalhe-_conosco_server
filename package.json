@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
@@ -17,6 +17,7 @@
     "seed": "ts-node src/seed.ts",
     "seed:templates": "ts-node src/seed-templates.ts",
     "seed:fortaleza": "ts-node src/seed-fortaleza.ts",
+    "seed:gestor": "ts-node src/seed-gestor.ts",
     "postinstall": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

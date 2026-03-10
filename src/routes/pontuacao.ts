@@ -100,7 +100,7 @@ router.post("/calcular/:candidatoId", async (req: Request, res: Response) => {
   try {
     const { candidatoId } = req.params;
     
-    const score = await calcularPontuacao(parseInt(candidatoId));
+    const score = await calcularPontuacao(parseInt(String(candidatoId)));
     
     await pool.query(
       "UPDATE candidatos SET score = $1 WHERE id = $2",
