@@ -1,8 +1,6 @@
-import { Pool } from 'pg';
+import { pool } from '../db';
 import { enviarEmail, substituirVariaveis as substituirVariaveisEmail } from './emailService';
 import { enviarWhatsApp, substituirVariaveis as substituirVariaveisWhatsApp } from './whatsappService';
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 interface DadosCandidato {
   id: number;

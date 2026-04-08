@@ -1,6 +1,6 @@
+import "./load-env";
 import express, { Router } from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { vagasRouter } from "./routes/vagas";
@@ -22,9 +22,10 @@ import gatilhosRouter from "./routes/gatilhos";
 import whatsappRouter from "./routes/whatsapp";
 import lgpdRouter from "./routes/lgpd";
 import gestaoRouter from "./routes/gestao";
+import estatisticasRouter from "./routes/estatisticas";
+import perfilRouter from "./routes/perfil";
+import documentosRouter from "./routes/documentos";
 import { requireAuth, optionalAuth, requireGestor } from "./middleware/auth";
-
-dotenv.config();
 
 // Criar pasta uploads se não existir
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -130,6 +131,22 @@ app.use("/lgpd", (req, res, next) => {
   // Demais rotas protegidas (RH apenas)
   requireAuth(req, res, next);
 }, lgpdRouter);
+
+// Rotas de Estatísticas: todos os usuários RH autenticados
+app.use("/estatisticas", requireAuth, estatisticasRouter);
+
+// Rota de Perfil: usuário logado gerencia seu próprio perfil
+app.use("/perfil", requireAuth, perfilRouter);
+
+// Rotas de Documentos de Admissão:
+//   - /documentos/login e /documentos/dados são públicas (auth própria por JWT de candidato)
+//   - /documentos/rh/* requerem auth RH
+app.use("/documentos", (req, res, next) => {
+  if (req.path === "/login" || req.path === "/dados") {
+    return next();
+  }
+  requireAuth(req, res, next);
+}, documentosRouter);
 
 // Rotas de Gestão: apenas para perfil "gestor"
 app.use("/gestao", requireGestor, gestaoRouter);

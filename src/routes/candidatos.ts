@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import multer from "multer";
 import * as cloudinary from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
@@ -23,7 +23,7 @@ console.log("🔧 Cloudinary Config:", {
 // Configurar storage do Multer com Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary: cld,
-  params: async (req, file) => {
+  params: async (_req: Request, file: Express.Multer.File) => {
     const originalName = file.originalname.replace(/\.[^/.]+$/, "");
     const sanitizedName = originalName.replace(/[^a-zA-Z0-9_-]/g, "_");
     return {
@@ -135,41 +135,76 @@ candidatosRouter.put("/:id", async (req, res) => {
   try {
     const filialId: number = (req as any).user?.filial_id || 1;
     const { id } = req.params;
-    const { status } = req.body as { status?: string };
+    const { status, motivo_reprovacao } = req.body as {
+      status?: string;
+      motivo_reprovacao?: string | null;
+    };
 
-    const { rows } = await pool.query(
-      `UPDATE candidatos SET status = COALESCE($1, status) WHERE id = $2 AND filial_id = $3 RETURNING *`,
-      [status, id, filialId]
-    );
+    if (status === undefined || status === null || String(status).trim() === "") {
+      return res.status(400).json({ error: "Campo status é obrigatório" });
+    }
+
+    const st = String(status).trim().toLowerCase().replace(/\s+/g, "_");
+    const motivo =
+      motivo_reprovacao != null && String(motivo_reprovacao).trim() !== ""
+        ? String(motivo_reprovacao).trim()
+        : null;
+
+    let rows: any[];
+    if (st === "reprovado") {
+      const result = await pool.query(
+        `UPDATE candidatos
+         SET status = $1,
+             motivo_reprovacao = $2,
+             data_reprovacao = (NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo'
+         WHERE id = $3 AND filial_id = $4
+         RETURNING *,
+           to_char(
+             data_reprovacao AT TIME ZONE 'America/Sao_Paulo',
+             'DD/MM/YYYY HH24:MI'
+           ) AS data_reprovacao_br`,
+        [st, motivo, id, filialId]
+      );
+      rows = result.rows;
+    } else {
+      const result = await pool.query(
+        `UPDATE candidatos
+         SET status = $1,
+             motivo_reprovacao = NULL,
+             data_reprovacao = NULL
+         WHERE id = $2 AND filial_id = $3
+         RETURNING *`,
+        [st, id, filialId]
+      );
+      rows = result.rows;
+    }
 
     if (!rows[0]) return res.status(404).json({ error: "Candidato não encontrado" });
 
     const candidato = rows[0];
 
-    if (status) {
-      switch (status) {
-        case "Em análise":
-          notificarEmAnalise(candidato.id, candidato.vaga_id, filialId).catch((err) => {
-            console.error('❌ Erro ao disparar gatilho "Em análise":', err);
-          });
-          break;
-        case "Pré-selecionado":
-          notificarPreSelecionado(candidato.id, candidato.vaga_id, filialId).catch((err) => {
-            console.error('❌ Erro ao disparar gatilho "Pré-selecionado":', err);
-          });
-          break;
-        case "Aprovado":
-          notificarAprovado(candidato.id, candidato.vaga_id, filialId).catch((err) => {
-            console.error('❌ Erro ao disparar gatilho "Aprovado":', err);
-          });
-          break;
-        case "Reprovado":
-          notificarReprovado(candidato.id, candidato.vaga_id, filialId).catch((err) => {
-            console.error('❌ Erro ao disparar gatilho "Reprovado":', err);
-          });
-          break;
+    const dispararPorStatus = (s: string) => {
+      const n = s.toLowerCase();
+      if (n === "em_analise" || n === "em_análise") {
+        notificarEmAnalise(candidato.id, candidato.vaga_id, filialId).catch((err) => {
+          console.error('❌ Erro ao disparar gatilho "Em análise":', err);
+        });
+      } else if (n === "pré_selecionado" || n === "pre_selecionado") {
+        notificarPreSelecionado(candidato.id, candidato.vaga_id, filialId).catch((err) => {
+          console.error('❌ Erro ao disparar gatilho "Pré-selecionado":', err);
+        });
+      } else if (n === "aprovado") {
+        notificarAprovado(candidato.id, candidato.vaga_id, filialId).catch((err) => {
+          console.error('❌ Erro ao disparar gatilho "Aprovado":', err);
+        });
+      } else if (n === "reprovado") {
+        notificarReprovado(candidato.id, candidato.vaga_id, filialId).catch((err) => {
+          console.error('❌ Erro ao disparar gatilho "Reprovado":', err);
+        });
       }
-    }
+    };
+
+    dispararPorStatus(st);
 
     res.json(candidato);
   } catch (error) {

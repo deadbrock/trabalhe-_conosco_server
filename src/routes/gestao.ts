@@ -369,10 +369,10 @@ router.get("/relatorios/vagas-performance", async (req: Request, res: Response) 
         v.criado_em,
         f.nome as filial_nome,
         COUNT(c.id) as total_candidatos,
-        COUNT(c.id) FILTER (WHERE c.status = 'Aprovado') as aprovados,
-        COUNT(c.id) FILTER (WHERE c.status = 'Reprovado') as reprovados,
+        COUNT(c.id) FILTER (WHERE LOWER(TRIM(c.status)) = 'aprovado') as aprovados,
+        COUNT(c.id) FILTER (WHERE LOWER(TRIM(c.status)) = 'reprovado') as reprovados,
         ROUND(
-          COUNT(c.id) FILTER (WHERE c.status = 'Aprovado')::numeric / 
+          COUNT(c.id) FILTER (WHERE LOWER(TRIM(c.status)) = 'aprovado')::numeric / 
           NULLIF(COUNT(c.id), 0) * 100, 
           2
         ) as taxa_aprovacao
@@ -546,8 +546,8 @@ router.get("/estatisticas/evolucao", async (req: Request, res: Response) => {
         DATE(c.data_cadastro) as data,
         f.nome as filial_nome,
         COUNT(*) as total_candidatos,
-        COUNT(*) FILTER (WHERE c.status = 'Aprovado') as aprovados,
-        COUNT(*) FILTER (WHERE c.status = 'Reprovado') as reprovados
+        COUNT(*) FILTER (WHERE LOWER(TRIM(c.status)) = 'aprovado') as aprovados,
+        COUNT(*) FILTER (WHERE LOWER(TRIM(c.status)) = 'reprovado') as reprovados
        FROM candidatos c
        LEFT JOIN filiais f ON c.filial_id = f.id
        WHERE c.data_cadastro >= NOW() - INTERVAL '${parseInt(dias as string)} days'
