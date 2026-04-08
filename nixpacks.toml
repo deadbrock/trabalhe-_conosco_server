@@ -1,14 +1,14 @@
-# 📦 Configuração Nixpacks para Railway
-# Twilio WhatsApp - SEM Chromium/Puppeteer
+# Configuração Nixpacks para Railway
+# Node.js 20 LTS — sem Chromium/Puppeteer
 
 [phases.setup]
-nixPkgs = ['nodejs_18']
+nixPkgs = ['nodejs_20']
 
 [phases.install]
-cmds = ['npm install']
+cmds = ['npm install --legacy-peer-deps']
 
 [phases.build]
 cmds = ['npm run build']
 
 [start]
-cmd = 'npm start'
+cmd = 'node dist/index.js'
